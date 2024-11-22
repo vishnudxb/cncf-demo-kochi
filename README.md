@@ -1,5 +1,31 @@
 bash ./install.sh
 
+kubectl --context $CTX_CLUSTER2 get nodes -owide -o=jsonpath='{range .items[*]}{"ip route add "}{.spec.podCIDR}{" via "}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+
+ip route add 10.220.0.0/24 via 172.18.0.5
+ip route add 10.220.1.0/24 via 172.18.0.4
+
+
+kubectl --context $CTX_CLUSTER1 get nodes -owide -o=jsonpath='{range .items[*]}{"ip route add "}{.spec.podCIDR}{" via "}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+
+ip route add 10.110.0.0/24 via 172.18.0.3
+ip route add 10.110.1.0/24 via 172.18.0.2
+
+
+Add Routes for Cluster 1 on Cluster 2 Nodes:
+
+docker exec cluster2-control-plane ip route add 10.110.0.0/24 via 172.18.0.3
+docker exec cluster2-control-plane ip route add 10.110.1.0/24 via 172.18.0.2
+docker exec cluster2-worker ip route add 10.110.0.0/24 via 172.18.0.3
+docker exec cluster2-worker ip route add 10.110.1.0/24 via 172.18.0.2
+
+Add Routes for Cluster 2 on Cluster 1 Nodes:
+
+docker exec cluster1-control-plane ip route add 10.220.0.0/24 via 172.18.0.5
+docker exec cluster1-control-plane ip route add 10.220.1.0/24 via 172.18.0.4
+docker exec cluster1-worker ip route add 10.220.0.0/24 via 172.18.0.5
+docker exec cluster1-worker ip route add 10.220.1.0/24 via 172.18.0.4
+
 cd istio && bash ./install.sh
 
 cd ..
