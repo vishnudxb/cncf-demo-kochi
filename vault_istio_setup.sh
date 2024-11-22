@@ -120,7 +120,7 @@ kubectl rollout status statefulset/vault -n $VAULT_NAMESPACE --context $VAULT_CL
 #    echo "Error: Vault pods did not become ready in time."
 #    exit 1
 #fi
-
+sleep 15
 # Step 7: Retrieve Vault Pod Name
 VAULT_POD=$(kubectl get pods --namespace $VAULT_NAMESPACE --context="$VAULT_CLUSTER_CONTEXT" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
 
@@ -131,7 +131,8 @@ fi
 
 # Step 8: Initialize and Unseal Vault
 echo "Initializing Vault in cluster $VAULT_CLUSTER_CONTEXT..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator init -format=json -ca-cert=/vault/tls/tls.crt > vault-init.json
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+        vault operator init -ca-cert=/vault/tls/tls.crt -format=json  > vault-init.json
 
 UNSEAL_KEY1=$(jq -r '.unseal_keys_b64[0]' vault-init.json)
 UNSEAL_KEY2=$(jq -r '.unseal_keys_b64[1]' vault-init.json)
@@ -139,22 +140,33 @@ UNSEAL_KEY3=$(jq -r '.unseal_keys_b64[2]' vault-init.json)
 ROOT_TOKEN=$(jq -r '.root_token' vault-init.json)
 
 echo "Unsealing Vault in cluster $VAULT_CLUSTER_CONTEXT..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY1 -ca-cert=/vault/tls/tls.crt
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY2 -ca-cert=/vault/tls/tls.crt
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY3 -ca-cert=/vault/tls/tls.crt
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal -ca-cert=/vault/tls/tls.crt $UNSEAL_KEY1
+sleep 5
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal -ca-cert=/vault/tls/tls.crt $UNSEAL_KEY2 
+sleep 5
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal -ca-cert=/vault/tls/tls.crt $UNSEAL_KEY3 
+sleep 5
+
+# Verify Vault unsealed state
+VAULT_SEALED_STATUS=$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault status -ca-cert=/vault/tls/tls.crt | grep Sealed | awk '{print $2}')
+
+if [ "$VAULT_SEALED_STATUS" != "false" ]; then
+    echo "Vault is not fully unsealed. Exiting script."
+    exit 1
+fi
 
 # Step 9: Enable PKI Secrets Engine
 echo "Enabling PKI secrets engine..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault login $ROOT_TOKEN -ca-cert=/vault/tls/tls.crt
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault secrets enable pki -ca-cert=/vault/tls/tls.crt
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault login -ca-cert=/vault/tls/tls.crt $ROOT_TOKEN 
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault secrets enable -ca-cert=/vault/tls/tls.crt pki 
 
 echo "Configuring root CA in Vault..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write pki/root/generate/internal \
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write -ca-cert=/vault/tls/tls.crt pki/root/generate/internal \
     common_name="mesh-root-ca" \
-    ttl=$ROOT_TTL -ca-cert=/vault/tls/tls.crt
+    ttl=$ROOT_TTL 
 
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write pki/config/urls \
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write -ca-cert=/vault/tls/tls.crt pki/config/urls \
     issuing_certificates="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/ca" \
-    crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl" -ca-cert=/vault/tls/tls.crt
+    crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl" 
 
 echo "Vault deployed and configured successfully!"
