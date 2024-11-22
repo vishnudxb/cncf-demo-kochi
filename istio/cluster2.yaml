@@ -1,0 +1,225 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  namespace: istio-system
+spec:
+  hub: docker.io/istio
+  tag: 1.24.0
+
+  # You may override parts of meshconfig by uncommenting the following lines.
+  meshConfig:
+    defaultHttpRetryPolicy:
+      attempts: 3
+      perTryTimeout: 5s
+      retryOn: "503,gateway-error,connect-failure,refused-stream"
+    defaultConfig:
+      proxyMetadata: 
+        ISTIO_META_DNS_CAPTURE: "true"
+        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+        BOOTSTRAP_XDS_AGENT: "true"
+    enablePrometheusMerge: true
+    connectTimeout: 30s
+    # Opt-out of global http2 upgrades.
+    # Destination rule is used to opt-in.
+    # h2_upgrade_policy: DO_NOT_UPGRADE
+
+  # Turn on default components: base, pilot, and ingress gateway
+  components:
+    base:
+      enabled: true
+    pilot:
+      enabled: true
+    # Istio Gateway feature
+    ingressGateways:
+    - name: istio-ingressgateway
+      label:
+        istio: ingressgateway
+        app: istio-ingressgateway
+        topology.istio.io/network: network1
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 10m
+            memory: 40Mi
+        env:
+        - name: ISTIO_META_REQUESTED_NETWORK_VIEW
+          value: network1
+        service:
+          ports:
+            ## You can add custom gateway ports in user values overrides, but it must include those ports since helm replaces.
+            # Note that AWS ELB will by default perform health checks on the first port
+            # on this list. Setting this to the health check port will ensure that health
+            # checks always work. https://github.com/istio/istio/issues/12503
+            - name: status-port
+              port: 15021
+              targetPort: 15021
+            - name: tls
+              port: 15443
+              targetPort: 15443
+            - name: tls-istiod
+              port: 15012
+              targetPort: 15012
+            - name: tls-webhook
+              port: 15017
+              targetPort: 15017
+            - name: http
+              port: 8080
+              targetPort: 8080
+            - name: https
+              port: 8443
+              targetPort: 8443
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: false
+
+    # Istio CNI feature
+    cni:
+      enabled: false
+    
+    # Remote and config cluster configuration for an external istiod
+    istiodRemote:
+      enabled: false
+
+  # Global values passed through to helm global.yaml.
+  # Please keep this in sync with manifests/charts/global.yaml
+  values:
+    defaultRevision: ""
+    global:
+      istioNamespace: istio-system
+      configValidation: true
+      istiod:
+        enableAnalysis: false
+      logging:
+        level: "default:debug"
+      logAsJson: false
+      pilotCertProvider: istiod
+      jwtPolicy: third-party-jwt
+      proxy:
+        image: proxyv2
+        clusterDomain: "cluster.local"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
+        logLevel: debug
+        componentLogLevel: "misc:error"
+        privileged: false
+        enableCoreDump: false
+        statusPort: 15020
+        readinessInitialDelaySeconds: 1
+        readinessPeriodSeconds: 2
+        readinessFailureThreshold: 30
+        includeIPRanges: "*"
+        excludeIPRanges: ""
+        excludeOutboundPorts: ""
+        excludeInboundPorts: ""
+        autoInject: enabled
+        tracer: "zipkin"
+      proxy_init:
+        image: proxyv2
+      # Specify image pull policy if default behavior isn't desired.
+      # Default behavior: latest images will be Always else IfNotPresent.
+      imagePullPolicy: ""
+      operatorManageWebhooks: false
+      tracer:
+        lightstep: {}
+        zipkin: {}
+        datadog: {}
+        stackdriver: {}
+      imagePullSecrets: []
+      defaultNodeSelector: {}
+      meshID: mesh1
+      multiCluster:
+        enabled: true
+        clusterName: "cluster1"
+      omitSidecarInjectorConfigMap: false
+      network: "network1"
+      defaultResources:
+        requests:
+          cpu: 10m
+      defaultPodDisruptionBudget:
+        enabled: true
+      priorityClassName: ""
+      sds:
+        token:
+          aud: istio-ca
+      sts:
+        servicePort: 0
+      meshNetworks:
+        networks:
+          network1:
+            endpoints:
+              - fromRegistry: cluster1
+            gateways:
+              - address: 192.168.1.100
+                port: 15443
+          network2:
+            endpoints:
+              - fromRegistry: cluster2
+            gateways:
+              - address: 192.168.1.101
+                port: 15443
+      mountMtlsCerts: false
+    base:
+      enableCRDTemplates: false
+      validationURL: ""
+    pilot:
+      autoscaleEnabled: true
+      autoscaleMin: 1
+      autoscaleMax: 5
+      replicaCount: 1
+      image: pilot
+      traceSampling: 1.0
+      env: {}
+      cpu:
+        targetAverageUtilization: 80
+      nodeSelector: {}
+      keepaliveMaxServerConnectionAge: 30m
+      deploymentLabels:
+      podLabels: {}
+      configMap: true
+
+    telemetry:
+      enabled: true
+      v2:
+        enabled: true
+        prometheus:
+          enabled: true
+        stackdriver:
+          enabled: false
+
+    istiodRemote:
+      injectionURL: ""
+      
+    gateways:
+      istio-egressgateway:
+        env: {}
+        autoscaleEnabled: true
+        type: ClusterIP
+        name: istio-egressgateway
+        secretVolumes:
+          - name: egressgateway-certs
+            secretName: istio-egressgateway-certs
+            mountPath: /etc/istio/egressgateway-certs
+          - name: egressgateway-ca-certs
+            secretName: istio-egressgateway-ca-certs
+            mountPath: /etc/istio/egressgateway-ca-certs
+
+      istio-ingressgateway:
+        autoscaleEnabled: true
+        type: LoadBalancer
+        loadBalancerSourceRanges:
+          - 192.168.1.0/24
+        name: istio-ingressgateway
+        env: {}
+        secretVolumes:
+          - name: ingressgateway-certs
+            secretName: istio-ingressgateway-certs
+            mountPath: /etc/istio/ingressgateway-certs
+          - name: ingressgateway-ca-certs
+            secretName: istio-ingressgateway-ca-certs
+            mountPath: /etc/istio/ingressgateway-ca-certs

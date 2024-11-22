@@ -1,0 +1,19 @@
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  annotations:
+  name: ngx-svc-cluster2
+spec:
+  gateways:
+  - istio-system/nginx-gw
+  hosts:
+  - "*"
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: ngx-svc-cluster2.default.svc.cluster.local
+        port:
+          number: 80

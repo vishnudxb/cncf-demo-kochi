@@ -1,0 +1,22 @@
+#!/bin/bash
+
+# Step 1: Install Istio on Cluster 1
+echo "Installing Istio on Cluster 1 ("$CTX_CLUSTER1")..."
+yes | istioctl install --context "$CTX_CLUSTER1" -f cluster1.yaml
+
+kubectl label namespace default istio-injection=enabled --context "$CTX_CLUSTER1"
+
+# Step 3: Install Istio on Cluster 2
+echo "Installing Istio on Cluster 2 ("$CTX_CLUSTER2")..."
+yes | istioctl install --context "$CTX_CLUSTER2" -f cluster2.yaml
+kubectl label namespace default istio-injection=enabled --context "$CTX_CLUSTER2"
+
+# Step 4: Verify Istio Installation
+echo "Verifying Istio installation..."
+kubectl get pods -n istio-system --context "$CTX_CLUSTER1"
+kubectl get pods -n istio-system --context "$CTX_CLUSTER2"
+
+kubectl get svc  -n istio-system --context "$CTX_CLUSTER1"
+kubectl get svc  -n istio-system --context "$CTX_CLUSTER2"
+
+
