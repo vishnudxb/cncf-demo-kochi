@@ -19,6 +19,9 @@ kubectl --context="$CTX_CLUSTER2" cluster-info dump | grep -E "cluster-cidr|serv
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml  --context="$CTX_CLUSTER1"
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml  --context="$CTX_CLUSTER2"
 
+# kubectl delete validatingwebhookconfigurations.admissionregistration.k8s.io metallb-webhook-configuration --context $CTX_CLUSTER1
+# kubectl delete validatingwebhookconfigurations.admissionregistration.k8s.io metallb-webhook-configuration --context $CTX_CLUSTER2
+
 kubectl apply -f ./metallb-config1.yaml --context="$CTX_CLUSTER1" 
 kubectl apply -f ./metallb-config2.yaml --context="$CTX_CLUSTER2" 
 

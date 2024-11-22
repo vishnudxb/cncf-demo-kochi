@@ -4,11 +4,12 @@
 VAULT_NAMESPACE="vault"
 VAULT_RELEASE="vault"
 VAULT_CLUSTER_CONTEXT="kind-cluster1"
-CLUSTER1_CONTEXT="kind-cluster1"
-CLUSTER2_CONTEXT="kind-cluster2"
 VAULT_HELM_REPO="https://helm.releases.hashicorp.com"
 INTERMEDIATE_TTL="43800h"  # 5 years
 ROOT_TTL="87600h"          # 10 years
+TLS_CERT="vault.crt"
+TLS_KEY="vault.key"
+TLS_SECRET_NAME="vault-tls"
 
 # Step 1: Validate Vault Cluster Context
 echo "Vault will be deployed in cluster context: $VAULT_CLUSTER_CONTEXT"
@@ -22,34 +23,87 @@ fi
 helm repo add hashicorp $VAULT_HELM_REPO
 helm repo update
 
-# Step 3: Install Vault in HA mode with Raft storage in the selected cluster
-
-kubectl delete namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT || echo "deleting and recreating vault ns.."
-
+echo "Cleaning up previous deployment..."
+kubectl delete namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT --ignore-not-found
 kubectl create namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
+
+# Step 3: Generate TLS Certificates
+echo "Generating TLS certificates for Vault..."
+openssl req -newkey rsa:2048 -nodes -keyout $TLS_KEY -x509 -days 365 -out $TLS_CERT -subj "/CN=vault.$VAULT_NAMESPACE.svc.cluster.local"
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to generate TLS certificates."
+    exit 1
+fi
+
+# Step 4: Create TLS Secret in Kubernetes
+echo "Creating TLS secret in Kubernetes..."
+kubectl delete secret $TLS_SECRET_NAME -n $VAULT_NAMESPACE --ignore-not-found
+kubectl create secret tls $TLS_SECRET_NAME --cert=$TLS_CERT --key=$TLS_KEY -n $VAULT_NAMESPACE
+if [ $? -ne 0 ]; then
+    echo "Error: Failed to create TLS secret."
+    exit 1
+fi
+
+# Step 5: Deploy Vault with TLS Enabled
+echo "Deploying Vault with TLS enabled..."
+cat <<EOF > vault-helm-values.yaml
+global:
+  enabled: true
+  tlsDisable: false
+  namespace: $VAULT_NAMESPACE
+
+server:
+  ha:
+    enabled: true
+    replicas: 3
+    raft:
+      enabled: true
+      config: |
+        ui = true
+        cluster_name = "vault-integrated-storage"
+        storage "raft" {
+          path = "/vault/data/"
+        }
+        listener "tcp" {
+          address = "0.0.0.0:8200"
+          cluster_address = "0.0.0.0:8201"
+          tls_cert_file = "/vault/tls/tls.crt"
+          tls_key_file = "/vault/tls/tls.key"
+        }
+        service_registration "kubernetes" {}
+
+  affinity: {}
+  extraVolumes:
+    - name: vault-tls
+      secret:
+        secretName: $TLS_SECRET_NAME
+
+  extraVolumeMounts:
+    - name: vault-tls
+      mountPath: /vault/tls
+      readOnly: true
+
+  readinessProbe:
+    httpGet:
+      path: /v1/sys/health
+      port: 8200
+      scheme: HTTPS
+EOF
+
 helm upgrade --install $VAULT_RELEASE hashicorp/vault \
     --namespace $VAULT_NAMESPACE \
-    --set "server.ha.enabled=true" \
-    --set "server.affinity=" \
-    --set "server.extraArgs=-config=/tmp/storageconfig.hcl" \
-    --set "server.service.apiAddress=http://vault-internal.vault.svc.cluster.local:8200" \
-    --set "server.service.clusterAddress=http://vault-internal.vault.svc.cluster.local:8201" \
-    --set "server.readinessProbe.httpGet.path=/v1/sys/health" \
-    --set "server.readinessProbe.httpGet.port=8200" \
-    --set "server.listener.address=0.0.0.0:8200" \
-    --set "server.storage.raft.enabled=true" \
-    --set "server.storage.raft.path=/vault/data" \
-    --set "server.apiAddr=http://vault-internal.vault.svc.cluster.local:8200" \
-    --set "server.clusterAddr=http://vault-internal.vault.svc.cluster.local:8201" \
-    --kube-context $VAULT_CLUSTER_CONTEXT
+    -f ./vault-helm-values.yaml \
+    --kube-context $VAULT_CLUSTER_CONTEXT --debug
 
+# Step 6: Wait for Vault Pods to be Ready
+echo "Waiting for Vault pods to be ready..."
+kubectl rollout status statefulset/vault -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT --timeout=300s
+if [ $? -ne 0 ]; then
+    echo "Error: Vault pods did not become ready in time."
+    exit 1
+fi
 
-# Wait for Vault pod to be ready
-echo "Waiting for Vault pod to be ready in cluster: $VAULT_CLUSTER_CONTEXT..."
-kubectl wait --namespace $VAULT_NAMESPACE --for=condition=ready pod -l app.kubernetes.io/name=vault \
-    --context $VAULT_CLUSTER_CONTEXT --timeout=300s
-
-# Step 4: Retrieve Vault Pod Name
+# Step 7: Retrieve Vault Pod Name
 VAULT_POD=$(kubectl get pods --namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT \
               -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
 
@@ -58,7 +112,7 @@ if [ -z "$VAULT_POD" ]; then
     exit 1
 fi
 
-# Step 5: Initialize and Unseal Vault
+# Step 8: Initialize and Unseal Vault
 echo "Initializing Vault in cluster $VAULT_CLUSTER_CONTEXT..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator init -format=json > vault-init.json
 
@@ -72,7 +126,7 @@ kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- 
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY2
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY3
 
-# Step 6: Enable PKI Secrets Engine
+# Step 9: Enable PKI Secrets Engine
 echo "Enabling PKI secrets engine..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault login $ROOT_TOKEN
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault secrets enable pki
@@ -83,5 +137,7 @@ kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- 
     ttl=$ROOT_TTL
 
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write pki/config/urls \
-    issuing_certificates="http://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/ca" \
-    crl_distribution_points="http://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl"
+    issuing_certificates="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/ca" \
+    crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl"
+
+echo "Vault deployed and configured successfully!"

@@ -1,0 +1,4 @@
+vault-helm-values.yaml
+vault.crt
+vault.key
+vault-init.json

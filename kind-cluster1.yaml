@@ -27,4 +27,10 @@ nodes:
       - containerPort: 8443
         hostPort: 8443
         protocol: TCP
+      - containerPort: 8200
+        hostPort: 8200
+        protocol: TCP
+      - containerPort: 8201 # Optional: For HA setups
+        hostPort: 8201
+        protocol: TCP
   - role: worker
