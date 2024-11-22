@@ -1,0 +1,7 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  podSubnet: "10.10.0.0/16"  # Pods in Cluster 2 will use 10.10.x.x
+  serviceSubnet: "10.20.0.0/16"  # Services in Cluster 2 will use 10.20.x.x
+nodes:
+  - role: control-plane
