@@ -19,4 +19,7 @@ kubectl get pods -n istio-system --context "$CTX_CLUSTER2"
 kubectl get svc  -n istio-system --context "$CTX_CLUSTER1"
 kubectl get svc  -n istio-system --context "$CTX_CLUSTER2"
 
+# Step 5: deploy gateway on both clusters
 
+kubectl apply -f ./cross-network-gateway.yaml -n istio-system --context "$CTX_CLUSTER1"
+kubectl apply -f ./cross-network-gateway.yaml -n istio-system --context "$CTX_CLUSTER2"
