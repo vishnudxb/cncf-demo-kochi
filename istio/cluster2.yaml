@@ -155,13 +155,13 @@ spec:
             endpoints:
               - fromRegistry: cluster1
             gateways:
-              - address: 192.168.1.100
+              - address: 192.168.1.240
                 port: 15443
           network2:
             endpoints:
               - fromRegistry: cluster2
             gateways:
-              - address: 192.168.1.101
+              - address: 10.10.1.240
                 port: 15443
       mountMtlsCerts: false
     base:
@@ -214,6 +214,7 @@ spec:
         type: LoadBalancer
         loadBalancerSourceRanges:
           - 192.168.1.0/24
+          - 10.10.1.0/24
         name: istio-ingressgateway
         env: {}
         secretVolumes:

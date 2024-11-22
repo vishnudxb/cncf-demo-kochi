@@ -30,3 +30,6 @@ istioctl version --context="$CTX_CLUSTER2"
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/main/manifests/metallb-native.yaml  --context="$CTX_CLUSTER1"
 kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/main/manifests/metallb-native.yaml  --context="$CTX_CLUSTER2"
 
+kubectl --context="$CTX_CLUSTER1" -f metallb-config1.yaml
+kubectl --context="$CTX_CLUSTER2" -f metallb-config2.yaml
+
