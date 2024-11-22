@@ -5,3 +5,6 @@ networking:
   serviceSubnet: "192.169.0.0/16"  # Services in Cluster 1 will use 192.169.x.x
 nodes:
   - role: control-plane
+    extraMounts:
+      - containerPath: /etc/kubernetes/manifests/kube-proxy.yaml
+        hostPath: ./kube-proxy-ipvs-config.yaml
