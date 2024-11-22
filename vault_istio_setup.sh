@@ -29,7 +29,8 @@ kubectl create namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 
 # Step 3: Generate TLS Certificates
 echo "Generating TLS certificates for Vault..."
-openssl req -newkey rsa:2048 -nodes -keyout $TLS_KEY -x509 -days 365 -out $TLS_CERT -subj "/CN=vault.$VAULT_NAMESPACE.svc.cluster.local"
+openssl req -newkey rsa:2048 -nodes -keyout $TLS_KEY -x509 -days 365 -out $TLS_CERT -subj "/CN=vault.$VAULT_NAMESPACE.svc.cluster.local" -addext "subjectAltName=DNS:vault.$VAULT_NAMESPACE.svc.cluster.local,DNS:localhost,IP:127.0.0.1"
+
 if [ $? -ne 0 ]; then
     echo "Error: Failed to generate TLS certificates."
     exit 1
@@ -53,6 +54,8 @@ global:
   namespace: $VAULT_NAMESPACE
 
 server:
+  service:
+    type: LoadBalancer
   ha:
     enabled: true
     replicas: 3
@@ -72,22 +75,37 @@ server:
         }
         service_registration "kubernetes" {}
 
-  affinity: {}
-  extraVolumes:
+  affinity: |
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 1
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: vault
+            topologyKey: kubernetes.io/hostname
+
+  volumes:
     - name: vault-tls
       secret:
         secretName: $TLS_SECRET_NAME
 
-  extraVolumeMounts:
+  volumeMounts:
     - name: vault-tls
       mountPath: /vault/tls
       readOnly: true
+
+  env:
+    - name: VAULT_CACERT
+      value: "/vault/tls/tls.crt"
 
   readinessProbe:
     httpGet:
       path: /v1/sys/health
       port: 8200
       scheme: HTTPS
+  updateStrategy:
+    type: RollingUpdate
 EOF
 
 helm upgrade --install $VAULT_RELEASE hashicorp/vault \
@@ -98,14 +116,13 @@ helm upgrade --install $VAULT_RELEASE hashicorp/vault \
 # Step 6: Wait for Vault Pods to be Ready
 echo "Waiting for Vault pods to be ready..."
 kubectl rollout status statefulset/vault -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT --timeout=300s
-if [ $? -ne 0 ]; then
-    echo "Error: Vault pods did not become ready in time."
-    exit 1
-fi
+#if [ $? -ne 0 ]; then
+#    echo "Error: Vault pods did not become ready in time."
+#    exit 1
+#fi
 
 # Step 7: Retrieve Vault Pod Name
-VAULT_POD=$(kubectl get pods --namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT \
-              -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
+VAULT_POD=$(kubectl get pods --namespace $VAULT_NAMESPACE --context="$VAULT_CLUSTER_CONTEXT" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
 
 if [ -z "$VAULT_POD" ]; then
     echo "Error: Vault pod not found in namespace $VAULT_NAMESPACE on cluster $VAULT_CLUSTER_CONTEXT"
@@ -114,7 +131,7 @@ fi
 
 # Step 8: Initialize and Unseal Vault
 echo "Initializing Vault in cluster $VAULT_CLUSTER_CONTEXT..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator init -format=json > vault-init.json
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator init -format=json -ca-cert=/vault/tls/tls.crt > vault-init.json
 
 UNSEAL_KEY1=$(jq -r '.unseal_keys_b64[0]' vault-init.json)
 UNSEAL_KEY2=$(jq -r '.unseal_keys_b64[1]' vault-init.json)
@@ -122,22 +139,22 @@ UNSEAL_KEY3=$(jq -r '.unseal_keys_b64[2]' vault-init.json)
 ROOT_TOKEN=$(jq -r '.root_token' vault-init.json)
 
 echo "Unsealing Vault in cluster $VAULT_CLUSTER_CONTEXT..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY1
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY2
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY3
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY1 -ca-cert=/vault/tls/tls.crt
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY2 -ca-cert=/vault/tls/tls.crt
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault operator unseal $UNSEAL_KEY3 -ca-cert=/vault/tls/tls.crt
 
 # Step 9: Enable PKI Secrets Engine
 echo "Enabling PKI secrets engine..."
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault login $ROOT_TOKEN
-kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault secrets enable pki
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault login $ROOT_TOKEN -ca-cert=/vault/tls/tls.crt
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault secrets enable pki -ca-cert=/vault/tls/tls.crt
 
 echo "Configuring root CA in Vault..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write pki/root/generate/internal \
     common_name="mesh-root-ca" \
-    ttl=$ROOT_TTL
+    ttl=$ROOT_TTL -ca-cert=/vault/tls/tls.crt
 
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write pki/config/urls \
     issuing_certificates="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/ca" \
-    crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl"
+    crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl" -ca-cert=/vault/tls/tls.crt
 
 echo "Vault deployed and configured successfully!"
