@@ -52,22 +52,22 @@ spec:
             # on this list. Setting this to the health check port will ensure that health
             # checks always work. https://github.com/istio/istio/issues/12503
             - name: status-port
-              port: 15021
+              port: 15031
               targetPort: 15021
             - name: tls
-              port: 15443
+              port: 15543
               targetPort: 15443
             - name: tls-istiod
-              port: 15012
+              port: 15022
               targetPort: 15012
             - name: tls-webhook
-              port: 15017
+              port: 15117
               targetPort: 15017
             - name: http
-              port: 8080
+              port: 9090
               targetPort: 8080
             - name: https
-              port: 8443
+              port: 9443
               targetPort: 8443
     egressGateways:
     - name: istio-egressgateway
