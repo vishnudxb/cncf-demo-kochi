@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Variables
-VAULT_ADDR="http://<vault-address>:8200" # Replace with your Vault address
+VAULT_ADDR="http://vault.vault.svc:8200" # Replace with your Vault address
 VAULT_ROLE="istio-ca"                   # Vault role configured for Kubernetes auth
 CERT_TTL="8760h"                        # Certificate validity (1 year)
 

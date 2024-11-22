@@ -23,11 +23,26 @@ helm repo add hashicorp $VAULT_HELM_REPO
 helm repo update
 
 # Step 3: Install Vault in HA mode with Raft storage in the selected cluster
+
+kubectl delete namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT || echo "deleting and recreating vault ns.."
+
 kubectl create namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
-helm install $VAULT_RELEASE hashicorp/vault \
+helm upgrade --install $VAULT_RELEASE hashicorp/vault \
     --namespace $VAULT_NAMESPACE \
     --set "server.ha.enabled=true" \
+    --set "server.affinity=" \
+    --set "server.extraArgs=-config=/tmp/storageconfig.hcl" \
+    --set "server.service.apiAddress=http://vault-internal.vault.svc.cluster.local:8200" \
+    --set "server.service.clusterAddress=http://vault-internal.vault.svc.cluster.local:8201" \
+    --set "server.readinessProbe.httpGet.path=/v1/sys/health" \
+    --set "server.readinessProbe.httpGet.port=8200" \
+    --set "server.listener.address=0.0.0.0:8200" \
+    --set "server.storage.raft.enabled=true" \
+    --set "server.storage.raft.path=/vault/data" \
+    --set "server.apiAddr=http://vault-internal.vault.svc.cluster.local:8200" \
+    --set "server.clusterAddr=http://vault-internal.vault.svc.cluster.local:8201" \
     --kube-context $VAULT_CLUSTER_CONTEXT
+
 
 # Wait for Vault pod to be ready
 echo "Waiting for Vault pod to be ready in cluster: $VAULT_CLUSTER_CONTEXT..."

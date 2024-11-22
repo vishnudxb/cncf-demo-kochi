@@ -8,3 +8,28 @@ nodes:
     extraMounts:
       - containerPath: /etc/kubernetes/manifests/kube-proxy.yaml
         hostPath: ./kube-proxy-ipvs-config.yaml
+    extraPortMappings:
+      - containerPort: 8200
+        hostPort: 8200
+        protocol: TCP
+      - containerPort: 8201
+        hostPort: 8201
+        protocol: TCP
+      - containerPort: 15021
+        hostPort: 15021
+        protocol: TCP
+      - containerPort: 15443
+        hostPort: 15443
+        protocol: TCP
+      - containerPort: 15012
+        hostPort: 15012
+        protocol: TCP
+      - containerPort: 15017
+        hostPort: 15017
+        protocol: TCP
+      - containerPort: 8080
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 8443
+        hostPort: 8443
+        protocol: TCP
