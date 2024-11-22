@@ -2,3 +2,6 @@ vault-helm-values.yaml
 vault.crt
 vault.key
 vault-init.json
+vault-ca.crt
+vault-ca.pem
+vault/

@@ -22,3 +22,14 @@ Build Date         2024-10-29T14:21:31Z
 Storage Type       raft
 HA Enabled         true
 command terminated with exit code 2
+
+
+kubectl -n vault exec vault-0 --context="$CTX_CLUSTER1" -- cat /vault/tls/..data/tls.crt > ~/cncf-demo-kochi/vault-ca.crt
+
+openssl x509 -in ~/cncf-demo-kochi/vault-ca.crt -out ~/cncf-demo-kochi/vault-ca.pem -outform PEM
+
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/cncf-demo-kochi/vault-ca.pem
+
+sudo security delete-certificate -c "vault.vault.svc.cluster.local" /Library/Keychains/System.keychain
+
+bash ./vault_ingress_gateway_setup.sh
