@@ -16,4 +16,4 @@ spec:
     - destination:
         host: ngx-svc-cluster1.default.svc.cluster.local
         port:
-          number: 80
+          number: 8080

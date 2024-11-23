@@ -5,3 +5,4 @@ vault-init.json
 vault-ca.crt
 vault-ca.pem
 vault/
+vault.ca

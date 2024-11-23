@@ -2,7 +2,7 @@ apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
   annotations:
-  name: nginx-gw
+  name: nginx-gw-2
   namespace: istio-system
 spec:
   selector:
@@ -12,5 +12,5 @@ spec:
     - '*'
     port:
       name: http
-      number: 80
+      number: 9090
       protocol: HTTP
