@@ -30,9 +30,9 @@ kubectl create namespace $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 
 # Step 3: Generate TLS Certificates
 echo "Generating TLS certificates for Vault..."
-openssl req -newkey rsa:2048 -nodes -keyout vault.key -x509 -days 365 -out vault.crt \
+openssl req -newkey rsa:2048 -nodes -keyout $TLS_KEY -x509 -days 365 -out $TLS_CERT \
   -subj "/CN=vault.vault.svc.cluster.local" \
-  -addext "subjectAltName=DNS:vault-0.vault-internal,DNS:vault-1.vault-internal,DNS:vault-2.vault-internal,DNS:vault.vault.svc.cluster.local,IP:127.0.0.1"
+  -addext "subjectAltName=DNS:vault-0.vault-internal,DNS:vault-1.vault-internal,DNS:vault-2.vault-internal,DNS:vault.vault.svc.cluster.local,DNS:localhost,IP:127.0.0.1"
 
 cp $TLS_CERT $TLS_CA
 if [ $? -ne 0 ]; then
@@ -63,8 +63,12 @@ global:
 
 server:
   service:
-    type: LoadBalancer
+    type: ClusterIP
   ha:
+    activeService:
+      enabled: false
+    standbyService:
+      enabled: false
     enabled: true
     replicas: 3
     raft:
@@ -75,8 +79,8 @@ server:
         cluster_name = "vault-integrated-storage"
 
         listener "tcp" {
-          address = "0.0.0.0:8200"
-          cluster_address = "0.0.0.0:8201"
+          address            = "[::]:8200"
+          cluster_address    = "[::]:8201"
           tls_cert_file = "/vault/tls/vault.crt"
           tls_key_file  = "/vault/tls/vault.key"
           tls_client_ca_file = "/vault/tls/vault.ca"
@@ -84,7 +88,6 @@ server:
         storage "raft" {
           path = "/vault/data"
             retry_join {
-            leader_tls_servername = "vault-server-tls"
             leader_api_addr = "https://vault-0.vault-internal:8200"
             leader_ca_cert_file = "/vault/tls/vault.ca"
             leader_client_cert_file = "/vault/tls/vault.crt"
@@ -92,7 +95,6 @@ server:
           }
 
           retry_join {
-            leader_tls_servername = "vault-server-tls"
             leader_api_addr = "https://vault-1.vault-internal:8200"
             leader_ca_cert_file = "/vault/tls/vault.ca"
             leader_client_cert_file = "/vault/tls/vault.crt"
@@ -100,7 +102,6 @@ server:
           }
 
           retry_join {
-            leader_tls_servername = "vault-server-tls"
             leader_api_addr = "https://vault-2.vault-internal:8200"
             leader_ca_cert_file = "/vault/tls/vault.ca"
             leader_client_cert_file = "/vault/tls/vault.crt"
@@ -188,14 +189,32 @@ UNSEAL_KEYS=("$UNSEAL_KEY1" "$UNSEAL_KEY2" "$UNSEAL_KEY3")
 # List of Vault pod names
 VAULT_PODS=("vault-0" "vault-1" "vault-2")
 
+# Ensure pods join the Raft cluster
+for pod in "${VAULT_PODS[@]}"; do
+  echo "Checking if $pod has joined the Raft cluster..."
+  if ! kubectl exec -n $VAULT_NAMESPACE $pod -- vault operator raft list-peers -ca-cert=/vault/tls/vault.ca | grep "$pod"; then
+    echo "$pod has not joined the Raft cluster. Attempting to join..."
+    kubectl exec -n $VAULT_NAMESPACE $pod -- \
+      vault operator raft join -leader-ca-cert=/vault/tls/vault.ca https://vault-0.vault-internal:8200
+  else
+    echo "$pod is already part of the Raft cluster."
+  fi
+done
+
 # Unseal each pod using the unseal keys
 for pod in "${VAULT_PODS[@]}"; do
-  echo "Unsealing Vault pod: $pod in cluster $VAULT_CLUSTER_CONTEXT..."
+  echo "Unsealing $pod..."
   for key in "${UNSEAL_KEYS[@]}"; do
-    kubectl exec -n $VAULT_NAMESPACE $pod --context $VAULT_CLUSTER_CONTEXT \
-      -- vault operator unseal -ca-cert=/vault/tls/vault.ca $key
+    kubectl exec -n $VAULT_NAMESPACE $pod -- \
+      vault operator unseal -ca-cert=/vault/tls/vault.ca $key
     sleep 5  # Optional delay between unseal attempts
   done
+done
+
+# Verify the unseal status
+for pod in "${VAULT_PODS[@]}"; do
+  echo "Checking unseal status of $pod..."
+  kubectl exec -n $VAULT_NAMESPACE $pod -- vault status -ca-cert=/vault/tls/vault.ca
 done
 
 # Verify Vault unsealed state
