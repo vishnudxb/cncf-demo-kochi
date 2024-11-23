@@ -50,6 +50,16 @@ kubectl exec -it vault-0 --context="$CTX_CLUSTER1" -n vault -- \
 
 ```
 
+Testing:
+
+```
+
+kubectl --context "$CTX_CLUSTER2" create deployment nginx --image=nginx
+
+k exec -it nginx-676b6c5bbc-hrhc6 --context "$CTX_CLUSTER2" -- curl -k https://vault.vault:8200/v1/sys/health
+
+```
+
 # kubectl -n vault exec vault-0 --context="$CTX_CLUSTER1" -- cat /vault/tls/..data/tls.crt > ~/cncf-demo-kochi/vault-ca.crt
 
 # openssl x509 -in ~/cncf-demo-kochi/vault-ca.crt -out ~/cncf-demo-kochi/vault-ca.pem -outform PEM
