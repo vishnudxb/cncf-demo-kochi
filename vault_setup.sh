@@ -311,6 +311,12 @@ echo "Import the Signed Certificate back to vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate=@/tmp/cncfintermediate.cert.pem
 
+echo "Set issuing and CRL distribution URLs for intermediate CA..."
+kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/config/urls \
+    issuing_certificates="$ISSUE_URL" \
+    crl_distribution_points="$CRL_DIST"
+
 echo "Set Default Issuer for Intermediate CA..."
 ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
 
