@@ -264,7 +264,7 @@ fi
 echo "Sign the Intermediate Certificate...."
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca -format=json pki/root/sign-intermediate \
-    csr=@cncf_intermediate.csr \
+    csr="$(cat cncf_intermediate.csr)" \
     format=pem_bundle ttl=$INTERMEDIATE_TTL > cncfintermediate_cert.json
 
 
@@ -280,7 +280,7 @@ fi
 
 echo "Import the Signed Certificate back to vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate=@cncfintermediate.cert.pem
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate="$(cat cncfintermediate.cert.pem)"
 
 
 echo "Set Default Issuer for Intermediate CA..."
