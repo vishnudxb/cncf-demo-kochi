@@ -141,19 +141,16 @@ server:
       mountPath: /vault/tls
       readOnly: true
 
-  env:
-    - name: VAULT_CACERT
-      value: "/vault/tls/vault.ca"
-    - name: VAULT_ADDR
-      value: "https://vault.vault.svc.cluster.local:8200"
+  extraEnvironmentVars:
+    VAULT_CACERT: "/vault/tls/vault.ca"
+    VAULT_ADDR: "https://vault.vault.svc.cluster.local:8200"
 
   readinessProbe:
     httpGet:
       path: /v1/sys/health
       port: 8200
       scheme: HTTPS
-  updateStrategy:
-    type: RollingUpdate
+  updateStrategyType: RollingUpdate
 EOF
 
 helm upgrade --install $VAULT_RELEASE hashicorp/vault \
