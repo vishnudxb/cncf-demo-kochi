@@ -9,3 +9,7 @@ vault.ca
 cncf_intermediate.csr
 cncfintermediate.cert.pem
 issuer.txt
+root_ca.json
+intermediate.csr
+cncf_intermediate_csr.json
+cncf_intermediate.csr
