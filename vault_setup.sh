@@ -281,7 +281,8 @@ fi
 
 
 echo "Copy the Intermediate Certificate cncf_intermediate.csr...."
-kubectl cp cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_intermediate.csr --context $VAULT_CLUSTER_CONTEXT
+ls cncf_intermediate.csr
+kubectl cp -f cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_intermediate.csr --context $VAULT_CLUSTER_CONTEXT
 
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca pki/root/sign-intermediate 
@@ -305,7 +306,8 @@ else
 fi
 
 echo "Copy cncfintermediate.cert.pem...."
-kubectl cp cncfintermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncfintermediate.cert.pem --context $VAULT_CLUSTER_CONTEXT
+ls cncfintermediate.cert.pem
+kubectl cp -f cncfintermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncfintermediate.cert.pem --context $VAULT_CLUSTER_CONTEXT
 
 echo "Import the Signed Certificate back to vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
