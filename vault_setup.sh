@@ -255,7 +255,7 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 
 echo "Create a role for the root CA..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write pki/roles/cncf-kochi-servers allow_any_name=true
+    vault write -ca-cert=/vault/tls/vault.ca pki/roles/cncf-kochi-servers allow_any_name=true
 
 echo "Configuring CRL Distribution and Issuing URLs..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
@@ -276,13 +276,21 @@ if [ ! -f cncf_intermediate.csr ]; then
     exit 1
 else
     echo "File cncf_intermediate.csr exists"
+    cat cncf_intermediate.csr
 fi
+
+
+echo "Copy the Intermediate Certificate cncf_intermediate.csr...."
+kubectl cp cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_intermediate.csr --context $VAULT_CLUSTER_CONTEXT
+
+kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki/root/sign-intermediate 
 
 echo "Sign the Intermediate Certificate...."
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca pki/root/sign-intermediate \
     issuer_ref="cncfcaroot-2024" \
-    csr="$(cat cncf_intermediate.csr)" \
+    csr=@/tmp/cncf_intermediate.csr \
     format=pem_bundle ttl=$INTERMEDIATE_TTL > cncfintermediate_cert.json
 
 jq -r '.data.certificate' cncfintermediate_cert.json > cncfintermediate.cert.pem
@@ -293,12 +301,15 @@ if [ ! -f cncfintermediate.cert.pem ]; then
     exit 1
 else
     echo "File cncfintermediate.cert.pem exists"
+    cat cncfintermediate.cert.pem
 fi
+
+echo "Copy cncfintermediate.cert.pem...."
+kubectl cp cncfintermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncfintermediate.cert.pem --context $VAULT_CLUSTER_CONTEXT
 
 echo "Import the Signed Certificate back to vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate="$(cat cncfintermediate.cert.pem)"
-
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate=@/tmp/cncfintermediate.cert.pem
 
 echo "Set Default Issuer for Intermediate CA..."
 ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
