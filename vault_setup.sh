@@ -144,6 +144,8 @@ server:
   env:
     - name: VAULT_CACERT
       value: "/vault/tls/vault.ca"
+    - name: VAULT_ADDR
+      value: "https://vault.vault.svc.cluster.local:8200"
 
   readinessProbe:
     httpGet:
@@ -317,8 +319,30 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
     issuing_certificates="$ISSUE_URL" \
     crl_distribution_points="$CRL_DIST"
 
-echo "Set Default Issuer for Intermediate CA..."
-ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
+# List and verify issuers for the intermediate CA
+echo "Listing all issuers for intermediate CA..."
+kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault list -ca-cert=/vault/tls/vault.ca pki_int/issuers
+
+
+echo "Verifying and setting default issuer for intermediate CA..."
+DEFAULT_ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault read -ca-cert=/vault/tls/vault.ca -field=default pki_int/config/issuers)
+
+if [ -z "$DEFAULT_ISSUER_REF" ]; then
+  # Explicitly set the desired issuer as default
+  ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+      vault list -ca-cert=/vault/tls/vault.ca pki_int/issuers | tail -n 1) # Adjust selection logic if needed
+  kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+      vault write -ca-cert=/vault/tls/vault.ca pki_int/config/issuers default="$ISSUER_REF"
+  echo "Default issuer set to: $ISSUER_REF"
+else
+  echo "Default issuer already set: $DEFAULT_ISSUER_REF"
+  ISSUER_REF=$DEFAULT_ISSUER_REF
+fi
+
+#echo "Set Default Issuer for Intermediate CA..."
+#ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
 
 echo "Issure ref is: $ISSUER_REF..."
 
