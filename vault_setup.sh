@@ -287,7 +287,7 @@ kubectl cp /tmp/cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_inte
 
 echo "Sign the Intermediate Certificate...."
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca pki/root/sign-intermediate \
+    vault write -ca-cert=/vault/tls/vault.ca -format=json pki/root/sign-intermediate \
     issuer_ref="cncfcaroot-2024" \
     csr=@/tmp/cncf_intermediate.csr \
     format=pem_bundle ttl=$INTERMEDIATE_TTL > cncfintermediate_cert.json
@@ -312,13 +312,9 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEX
     vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate=@/tmp/cncfintermediate.cert.pem
 
 echo "Set Default Issuer for Intermediate CA..."
-ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
-    vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
+ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
 
 echo "Issure ref is: $ISSUER_REF..."
-
-kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca pki_int/config/issuers default_issuer_id="$ISSUER_REF"
 
 echo "Create a PKI Role for Issuing Certificates..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
