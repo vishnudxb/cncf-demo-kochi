@@ -263,26 +263,25 @@ echo "Tune the pki_int secrets engine to issue certificates with a maximum time-
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
     vault secrets tune -ca-cert=/vault/tls/vault.ca -max-lease-ttl=43800h pki_int
 
-echo "Generate an intermediate CSR as cncf_intermediate.csr"
+echo "Generating intermediate CSR..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca -format=json pki_int/intermediate/generate/internal \
-        common_name="svc.cluster.local Intermediate Authority" \
-        issuer_name="svc-cluster-local-intermediate" | jq -r '.data.csr' > cncf_intermediate.csr
+    common_name="svc.cluster.local Intermediate Authority" \
+    issuer_name="svc-cluster-local-intermediate" | jq -r '.data.csr' > cncf_intermediate.csr
 
 if [ ! -f cncf_intermediate.csr ]; then
-    echo "Error: cncf_intermediate.csr was not created."
+    echo "Error: Intermediate CSR file was not created."
     exit 1
 fi
 
-echo "Sign the intermediate certificate with the root CA private key"
+echo "Signing the intermediate certificate..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca -format=json pki/root/sign-intermediate \
-        csr=@cncf_intermediate.csr \
-        format=pem_bundle ttl="43800h" \
-        | jq -r '.data.certificate' > cncfintermediate.cert.pem
+    csr=@cncf_intermediate.csr \
+    format=pem_bundle ttl="43800h" | jq -r '.data.certificate' > cncfintermediate.cert.pem
 
 if [ ! -f cncfintermediate.cert.pem ]; then
-    echo "Error: cncfintermediate.cert.pem was not created."
+    echo "Error: Signed intermediate certificate file was not created."
     exit 1
 fi
 
@@ -296,8 +295,7 @@ kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- 
 echo "Set default issuer for pki_int"
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca pki_int/config/issuers \
-    default_issuer_id="$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD -- \
-    vault list -ca-cert=/vault/tls/vault.ca pki/issuers | tail -n 1)"
+    default_issuer_id="$ISSUER_REF"
 
 echo "creating vault role.."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
