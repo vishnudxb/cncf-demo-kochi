@@ -269,21 +269,21 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEX
     common_name="svc.cluster.local Intermediate Authority" \
     issuer_name="cncf-kochi-intermediate" > cncf_intermediate_csr.json
 
-jq -r '.data.csr' cncf_intermediate_csr.json > cncf_intermediate.csr
+jq -r '.data.csr' cncf_intermediate_csr.json > /tmp/cncf_intermediate.csr
 
 if [ ! -f cncf_intermediate.csr ]; then
     echo "File cncf_intermediate.csr not found"
     exit 1
 else
     echo "File cncf_intermediate.csr exists"
-    cat cncf_intermediate.csr
+    cat /tmp/cncf_intermediate.csr
 fi
 
 
 echo "Copy the Intermediate Certificate cncf_intermediate.csr...."
-ls cncf_intermediate.csr
+ls -la /tmp/cncf_intermediate.csr
 
-kubectl cp cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_intermediate.csr --context $VAULT_CLUSTER_CONTEXT
+kubectl cp /tmp/cncf_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncf_intermediate.csr --context $VAULT_CLUSTER_CONTEXT
 
 
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
@@ -296,7 +296,7 @@ kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEX
     csr=@/tmp/cncf_intermediate.csr \
     format=pem_bundle ttl=$INTERMEDIATE_TTL > cncfintermediate_cert.json
 
-jq -r '.data.certificate' cncfintermediate_cert.json > cncfintermediate.cert.pem
+jq -r '.data.certificate' cncfintermediate_cert.json > /tmp/cncfintermediate.cert.pem
 
 
 if [ ! -f cncfintermediate.cert.pem ]; then
@@ -304,12 +304,12 @@ if [ ! -f cncfintermediate.cert.pem ]; then
     exit 1
 else
     echo "File cncfintermediate.cert.pem exists"
-    cat cncfintermediate.cert.pem
+    cat /tmp/cncfintermediate.cert.pem
 fi
 
 echo "Copy cncfintermediate.cert.pem...."
-ls cncfintermediate.cert.pem
-kubectl cp cncfintermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncfintermediate.cert.pem --context $VAULT_CLUSTER_CONTEXT
+ls -la /tmp/cncfintermediate.cert.pem
+kubectl cp /tmp/cncfintermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/cncfintermediate.cert.pem --context $VAULT_CLUSTER_CONTEXT
 
 echo "Import the Signed Certificate back to vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
