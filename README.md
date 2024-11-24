@@ -14,7 +14,7 @@ Step 3:
 ```
 cd ..
 
-bash ./vault_istio_setup.sh
+bash ./vault_setup.sh
 
 ```
 

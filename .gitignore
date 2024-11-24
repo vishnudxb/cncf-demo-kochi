@@ -6,3 +6,6 @@ vault-ca.crt
 vault-ca.pem
 vault/
 vault.ca
+cncf_intermediate.csr
+cncfintermediate.cert.pem
+issuer.txt

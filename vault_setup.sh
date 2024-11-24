@@ -196,6 +196,7 @@ for pod in "${VAULT_PODS[@]}"; do
     echo "$pod has not joined the Raft cluster. Attempting to join..."
     kubectl exec -n $VAULT_NAMESPACE $pod -- \
       vault operator raft join -leader-ca-cert=/vault/tls/vault.ca https://vault-0.vault-internal:8200
+      sleep 10
   else
     echo "$pod is already part of the Raft cluster."
   fi
@@ -232,11 +233,82 @@ kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- 
 
 echo "Configuring root CA in Vault..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write -ca-cert=/vault/tls/vault.ca pki/root/generate/internal \
-    common_name="mesh-root-ca" \
+    common_name="svc.cluster.local" \
+    issuer_name="cncf-kochi"
     ttl=$ROOT_TTL 
 
+echo "List the issuer information for the root CA...."
+ISSUER_REF=$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault list -ca-cert=/vault/tls/vault.ca  pki/issuers/ | tail -n1)
+
+echo "List the issuer information for the root CA...."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault read -ca-cert=/vault/tls/vault.ca pki/issuer/$ISSUER_REF | tail -n 6
+
+
+echo "Create a role for the root CA..."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki/roles/cncf-kochi allow_any_name=true
+
+echo "Configure the CA and CRL URLs..."
 kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault write -ca-cert=/vault/tls/vault.ca pki/config/urls \
     issuing_certificates="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/ca" \
     crl_distribution_points="https://vault.$VAULT_NAMESPACE.svc:8200/v1/pki/crl" 
+
+
+echo "create an intermediate CA using the root CA you regenerated..."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault secrets enable -ca-cert=/vault/tls/vault.ca -path=pki_int pki
+
+echo "Tune the pki_int secrets engine to issue certificates with a maximum time-to-live (TTL) of 43800 hours."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault secrets tune -ca-cert=/vault/tls/vault.ca -max-lease-ttl=43800h pki_int
+
+echo "Generate an intermediate CSR as cncf_intermediate.csr"
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca -format=json pki_int/intermediate/generate/internal \
+        common_name="svc.cluster.local Intermediate Authority" \
+        issuer_name="svc-cluster-local-intermediate" | jq -r '.data.csr' > cncf_intermediate.csr
+
+if [ ! -f cncf_intermediate.csr ]; then
+    echo "Error: cncf_intermediate.csr was not created."
+    exit 1
+fi
+
+echo "Sign the intermediate certificate with the root CA private key"
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca -format=json pki/root/sign-intermediate \
+        csr=@cncf_intermediate.csr \
+        format=pem_bundle ttl="43800h" \
+        | jq -r '.data.certificate' > cncfintermediate.cert.pem
+
+if [ ! -f cncfintermediate.cert.pem ]; then
+    echo "Error: cncfintermediate.cert.pem was not created."
+    exit 1
+fi
+
+
+echo "Once the CSR is signed and the root CA returns a certificate, it can be imported back into Vault."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/intermediate/set-signed certificate=@cncfintermediate.cert.pem
+
+# Create a role named svc.cluster.local which allows subdomains, and specify the default issuer ref ID as the value of issuer_ref.
+
+echo "Set default issuer for pki_int"
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/config/issuers \
+    default_issuer_id="$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD -- \
+    vault list -ca-cert=/vault/tls/vault.ca pki/issuers | tail -n 1)"
+
+echo "creating vault role.."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write  -ca-cert=/vault/tls/vault.ca pki_int/roles/cncf-kochi \
+        issuer_ref="$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD -- vault read  -ca-cert=/vault/tls/vault.ca -field=default pki_int/config/issuers)" \
+        allowed_domains="example.com" \
+        allow_subdomains=true \
+        max_ttl="720h"
+
+echo "request certificates.."
+kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write -ca-cert=/vault/tls/vault.ca pki_int/issue/cncf-kochi common_name="istio-ingressgateway.istio-system.svc.cluster.local" ttl="24h"
 
 echo "Vault deployed and configured successfully!"
