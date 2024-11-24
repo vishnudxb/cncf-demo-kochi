@@ -202,11 +202,11 @@ for pod in "${VAULT_PODS[@]}"; do
   kubectl exec -n $VAULT_NAMESPACE $pod -- vault status -ca-cert=/vault/tls/vault.ca
 done
 
-#for pod in vault-1 vault-2; do
-#  echo "Joining $pod to the Raft cluster..."
-#  kubectl exec -n $VAULT_NAMESPACE $pod --context $VAULT_CLUSTER_CONTEXT -- \
-#      vault operator raft join -leader-ca-cert=/vault/tls/vault.ca https://vault-0.vault-internal:8200
-#done
+for pod in vault-1 vault-2; do
+  echo "Joining $pod to the Raft cluster..."
+  kubectl exec -n $VAULT_NAMESPACE $pod --context $VAULT_CLUSTER_CONTEXT -- \
+      vault operator raft join -leader-ca-cert=/vault/tls/vault.ca https://vault-0.vault-internal:8200
+done
 
 # Verify Vault unsealed state
 VAULT_SEALED_STATUS=$(kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context $VAULT_CLUSTER_CONTEXT -- vault status -ca-cert=/vault/tls/vault.ca | grep Sealed | awk '{print $2}')
@@ -238,8 +238,24 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 
 echo "Generate root CA in vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca  -format=json pki/root/generate/internal \
-    common_name="svc.cluster.local Root CA" ttl=$ROOT_TTL > root_ca.json
+    vault write -ca-cert=/vault/tls/vault.ca  -field=certificate pki/root/generate/internal \
+    common_name="svc.cluster.local Root CA" issuer_name="cncfcaroot-2024" ttl=$ROOT_TTL > cncfcaroot-2024.crt
+
+
+echo "List the issuer information for the root CA."
+export KEY_ID=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault list -ca-cert=/vault/tls/vault.ca -format=json pki/issuers/ | jq -r '.[]' | sort)
+
+echo "KEY ID ISSUER is: $KEY_ID....."
+
+echo "You can read the issuer with its ID to get the certificates and other metadata about the issuer. Let's skip the certificate output, but list the issuer metadata and usage information."
+kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault read -ca-cert=/vault/tls/vault.ca pki/issuer/$KEY_ID | tail -n 6
+
+
+echo "Create a role for the root CA..."
+kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+    vault write pki/roles/cncf-kochi-servers allow_any_name=true
 
 echo "Configuring CRL Distribution and Issuing URLs..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
@@ -250,7 +266,8 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 echo "Generate Intermediate CSR..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca -format=json pki_int/intermediate/generate/internal \
-    common_name="svc.cluster.local Intermediate Authority" > cncf_intermediate_csr.json
+    common_name="svc.cluster.local Intermediate Authority" \
+    issuer_name="cncf-kochi-intermediate" > cncf_intermediate_csr.json
 
 jq -r '.data.csr' cncf_intermediate_csr.json > cncf_intermediate.csr
 
@@ -263,10 +280,10 @@ fi
 
 echo "Sign the Intermediate Certificate...."
 kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
-    vault write -ca-cert=/vault/tls/vault.ca -format=json pki/root/sign-intermediate \
+    vault write -ca-cert=/vault/tls/vault.ca pki/root/sign-intermediate \
+    issuer_ref="cncfcaroot-2024" \
     csr="$(cat cncf_intermediate.csr)" \
     format=pem_bundle ttl=$INTERMEDIATE_TTL > cncfintermediate_cert.json
-
 
 jq -r '.data.certificate' cncfintermediate_cert.json > cncfintermediate.cert.pem
 
@@ -285,13 +302,12 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEX
 
 echo "Set Default Issuer for Intermediate CA..."
 ISSUER_REF=$(kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
-    vault read -ca-cert=/vault/tls/vault.ca -field=id  pki_int/config/issuers)
+    vault read -ca-cert=/vault/tls/vault.ca -field=default  pki_int/config/issuers)
 
 echo "Issure ref is: $ISSUER_REF..."
 
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca pki_int/config/issuers default_issuer_id="$ISSUER_REF"
-
 
 echo "Create a PKI Role for Issuing Certificates..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
