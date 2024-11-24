@@ -239,7 +239,7 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 echo "Generate root CA in vault...."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca  -field=certificate pki/root/generate/internal \
-    common_name="svc.cluster.local Root CA" issuer_name="cncfcaroot-2024" ttl=$ROOT_TTL > cncfcaroot-2024.crt
+    common_name="*.svc.cluster.local" issuer_name="cncfcaroot-2024" ttl=$ROOT_TTL > cncfcaroot-2024.crt
 
 
 echo "List the issuer information for the root CA."
@@ -266,8 +266,8 @@ kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT
 echo "Generate Intermediate CSR..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE  --context $VAULT_CLUSTER_CONTEXT -- \
     vault write -ca-cert=/vault/tls/vault.ca -format=json pki_int/intermediate/generate/internal \
-    common_name="svc.cluster.local Intermediate Authority" \
-    issuer_name="cncf-kochi-intermediate" > cncf_intermediate_csr.json
+    common_name="*.svc.cluster.local" \
+    issuer_name="cncfcaroot-2024" > cncf_intermediate_csr.json
 
 jq -r '.data.csr' cncf_intermediate_csr.json > /tmp/cncf_intermediate.csr
 
