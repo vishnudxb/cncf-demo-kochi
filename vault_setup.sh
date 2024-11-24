@@ -161,11 +161,6 @@ helm upgrade --install $VAULT_RELEASE hashicorp/vault \
 
 # Step 6: Wait for Vault Pods to be Ready
 echo "Waiting for Vault pods to be ready..."
-kubectl get statefulset vault -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT --timeout=300s
-#if [ $? -ne 0 ]; then
-#    echo "Error: Vault pods did not become ready in time."
-#    exit 1
-#fi
 sleep 15
 # Step 7: Retrieve Vault Pod Name
 VAULT_POD=$(kubectl get pods --namespace $VAULT_NAMESPACE --context="$VAULT_CLUSTER_CONTEXT" -l app.kubernetes.io/name=vault -o jsonpath='{.items[0].metadata.name}')
