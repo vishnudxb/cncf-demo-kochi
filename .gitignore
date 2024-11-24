@@ -13,3 +13,4 @@ root_ca.json
 intermediate.csr
 cncf_intermediate_csr.json
 cncf_intermediate.csr
+cncfintermediate_cert.json
