@@ -5,6 +5,21 @@ source ./context.sh
 
 VAULT_NAMESPACE="vault"
 ISTIO_NAMESPACE="istio-system"
+WORKDIR=/tmp/vault
+
+cleanup() {
+    echo "Starting cleanup process..."
+
+    # Delete Istio secrets in both clusters
+    kubectl delete secret cacerts -n $ISTIO_NAMESPACE --context="$CTX_CLUSTER1" --ignore-not-found
+    kubectl delete secret cacerts -n $ISTIO_NAMESPACE --context="$CTX_CLUSTER2" --ignore-not-found
+
+    # Remove any temporary certificate files
+    rm -f ca-cert.pem ca-key.pem root-cert.pem cert-chain.pem
+    sleep 3
+
+    echo "Cleanup process completed."
+}
 
 # Function to retrieve certificates from Vault
 retrieve_vault_certs() {
@@ -20,17 +35,19 @@ retrieve_vault_certs() {
         exit 1
     fi
 
+    echo "Login to vault"
+    ROOT_TOKEN=$(jq -r '.root_token' ${WORKDIR}/cluster-keys.json)
+    # Login to Vault
+    kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- vault login $ROOT_TOKEN
+
     # Retrieve Intermediate CA Certificate
-    kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context="$CLUSTER_CONTEXT" -- vault read -format=json pki_int/cert/ca \
-        -ca-cert=/vault/tls/vault.ca | jq -r '.data.certificate' > ca-cert.pem
+    kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context="$CLUSTER_CONTEXT" -- vault read -format=json pki_int/cert/ca | jq -r '.data.certificate' > ca-cert.pem
 
     # Retrieve Root CA Certificate
-    kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context="$CLUSTER_CONTEXT" -- vault read -format=json pki/root \
-        -ca-cert=/vault/tls/vault.ca | jq -r '.data.certificate' > root-cert.pem
+    kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context="$CLUSTER_CONTEXT" -- vault read -format=json pki/root | jq -r '.data.certificate' > root-cert.pem
 
     # Retrieve Intermediate Private Key
-    kubectl exec -n $VAULT_NAMESPACE $VAULT_POD --context="$CLUSTER_CONTEXT" -- vault read -format=json pki_int/cert/ca \
-        -ca-cert=/vault/tls/vault.ca | jq -r '.data.private_key' > ca-key.pem
+    kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context="$CLUSTER_CONTEXT" -- vault read -format=json pki_int/cert/ca | jq -r '.data.private_key' > ca-key.pem
 
     # Combine certificates to create Certificate Chain
     cat ca-cert.pem root-cert.pem > cert-chain.pem
@@ -44,9 +61,6 @@ create_istio_secret() {
 
     echo "Creating Istio secrets for cluster with context: $CLUSTER_CONTEXT"
 
-    # Ensure the Istio namespace exists
-    kubectl create namespace $ISTIO_NAMESPACE --context="$CLUSTER_CONTEXT" --dry-run=client -o yaml | kubectl apply -f -
-
     # Create the `cacerts` secret
     kubectl create secret generic cacerts -n $ISTIO_NAMESPACE \
         --context="$CLUSTER_CONTEXT" \
@@ -54,7 +68,7 @@ create_istio_secret() {
         --from-file=ca-key.pem=ca-key.pem \
         --from-file=root-cert.pem=root-cert.pem \
         --from-file=cert-chain.pem=cert-chain.pem \
-        --dry-run=client -o yaml | kubectl apply -f -
+        --dry-run=client -o yaml | kubectl apply -n $ISTIO_NAMESPACE -f -
 
     echo "Istio secret 'cacerts' created successfully for context $CLUSTER_CONTEXT."
 }
@@ -70,7 +84,7 @@ enable_endpoint_discovery() {
     # Use istioctl to create the remote secret for the target cluster
     istioctl create-remote-secret \
         --context="$SOURCE_CONTEXT" \
-        --name="$TARGET_CLUSTER_NAME" | kubectl apply --context="$TARGET_CONTEXT" -f -
+        --name="$TARGET_CLUSTER_NAME" | kubectl -n $ISTIO_NAMESPACE apply --context="$TARGET_CONTEXT" -f -
 
     echo "Endpoint Discovery enabled from $SOURCE_CONTEXT to $TARGET_CONTEXT."
 }
@@ -93,6 +107,9 @@ configure_cluster() {
 
     echo "Configuration completed for cluster: $CLUSTER_NAME with context: $CLUSTER_CONTEXT"
 }
+
+# Run cleanup first
+cleanup
 
 # Configure Cluster 1
 configure_cluster "$CTX_CLUSTER1" "cluster1"

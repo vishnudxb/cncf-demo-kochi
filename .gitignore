@@ -16,3 +16,6 @@ cncf_intermediate.csr
 cncfintermediate_cert.json
 intermediate_csr.json
 cncfcaroot-2024.crt
+ca-cert.pem
+root-cert.pem
+ca-key.pem
