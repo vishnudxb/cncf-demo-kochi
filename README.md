@@ -21,14 +21,6 @@ bash ./vault_setup.sh
 Step 4: 
 
 ``` 
-bash ./vault_istio_ca_setup.sh
-
-```
-
-Step 5: 
-
-```
-
-bash ./vault_istio_gw.sh
+bash ./setup_vault_ns_certificates.sh
 
 ```
