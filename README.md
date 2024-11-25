@@ -21,7 +21,12 @@ bash ./vault_setup.sh
 Step 4: 
 
 ``` 
-export VAULT_ROOT_TOKEN=<your-root-token>
+bash ./vault_istio_ca_setup.sh
+
+```
+
+Step 5: 
+```
 
 bash ./vault_ingress_gateway_setup.sh
 
