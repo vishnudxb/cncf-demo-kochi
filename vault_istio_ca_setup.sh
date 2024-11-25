@@ -118,7 +118,6 @@ echo "Creating roles for multiple domains..."
 kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
     vault write pki_int/roles/cncf-kochi \
     allow_any_name=true \
-    allow_subdomains=true \
     allow_wildcard_certificates=true \
     allow_ip_sans=true \
     allow_localhost=true \
