@@ -26,5 +26,5 @@ kubectl apply -f ./cross-network-gateway.yaml -n istio-system --context "$CTX_CL
 
 # Step 6: deploy peer authentications on both clusters
 
-kubectl apply -f ./pa.yaml -n istio-system --context "$CTX_CLUSTER1"
-kubectl apply -f ./pa.yaml -n istio-system --context "$CTX_CLUSTER2"
+kubectl apply -f ./pa.yaml  --context "$CTX_CLUSTER1"
+kubectl apply -f ./pa.yaml  --context "$CTX_CLUSTER2"

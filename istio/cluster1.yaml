@@ -155,13 +155,13 @@ spec:
             endpoints:
               - fromRegistry: cluster1
             gateways:
-              - address: 192.168.1.240
+              - address: 172.18.0.150
                 port: 15443
           network2:
             endpoints:
               - fromRegistry: cluster2
             gateways:
-              - address: 10.10.1.240
+              - address: 172.18.0.170
                 port: 15443
       mountMtlsCerts: false
     base:
