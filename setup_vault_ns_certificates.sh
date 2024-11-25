@@ -144,7 +144,7 @@ kubectl cp  $WORKDIR/intermediate_cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/inte
 echo "Run set-signed....."
 vault_exec write pki_intermediate/intermediate/set-signed certificate=@/tmp/intermediate_cert.pem
         
-# Not use in production allow_any_name=true \
+# Not use in production with allow_any_name=true \
 
 echo "Configuring roles for wildcard certificates in namespaces..."
 for NAMESPACE in "${NAMESPACES[@]}"; do
