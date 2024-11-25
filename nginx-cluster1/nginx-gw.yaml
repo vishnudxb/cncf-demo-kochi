@@ -11,6 +11,9 @@ spec:
   - hosts:
     - '*'
     port:
-      name: http
+      name: https
       number: 8080
-      protocol: HTTP
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: default-wildcard-credential
