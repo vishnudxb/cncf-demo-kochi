@@ -103,10 +103,17 @@ vault_exec secrets enable -path=pki_int pki
 vault_exec secrets tune -max-lease-ttl=43800h pki_int
 
 
-vault_exec write -format=json pki_int/intermediate/generate/internal \
+vault_exec write -format=json pki_int/intermediate/generate/exported \
      common_name="svc.cluster.local Intermediate Authority" \
      issuer_name="svc-cluster-local-intermediate" \
-     | jq -r '.data.csr' > $WORKDIR/pki_intermediate.csr
+     ttl="43800h" \
+     key_type="rsa" \
+     key_bits="2048" > "$WORKDIR/intermediate_csr.json"     
+
+jq -r '.data.private_key' "$WORKDIR/intermediate_csr.json" > "$WORKDIR/ca-key.pem"
+
+jq -r '.data.csr' "$WORKDIR/intermediate_csr.json" > $WORKDIR/pki_intermediate.csr
+
 
 echo "Copy the file pki_intermediate.csr"
 kubectl cp $WORKDIR/pki_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/pki_intermediate.csr --context=$VAULT_CLUSTER_CONTEXT
@@ -115,9 +122,15 @@ kubectl cp $WORKDIR/pki_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/pki_in
 vault_exec write -format=json pki/root/sign-intermediate \
      issuer_ref="root-2023" \
      csr=@/tmp/pki_intermediate.csr \
-     format=pem_bundle ttl="43800h" \
-     | jq -r '.data.certificate' > $WORKDIR/intermediate.cert.pem
+     format=pem_bundle ttl="43800h"  > $WORKDIR/intermediate_cert.json
 
+
+echo "Show private key:....."
+cat $WORKDIR/ca-key.pem
+
+jq -r '.data.certificate' "$WORKDIR/intermediate_cert.json" > "$WORKDIR/intermediate.cert.pem"
+echo "Show intermediate cert..."
+cat $WORKDIR/intermediate.cert.pem
 
 echo "Copy the file intermediate.cert.pem"
 kubectl cp $WORKDIR/intermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/intermediate.cert.pem --context=$VAULT_CLUSTER_CONTEXT
