@@ -39,7 +39,8 @@ cleanup() {
 
     # Remove temporary files
     echo "Cleaning up temporary files..."
-    rm -rvf cncfcaroot-2024.crt cncf_intermediate_csr.json /tmp/cncf_intermediate.csr /tmp/cncfintermediate.cert.pem cncfintermediate_cert.json $WORKDIR/intermediate_csr.json $WORKDIR/intermediate.csr $WORKDIR/intermediate_cert.pem
+    rm -rvf cncfcaroot-2024.crt cncf_intermediate_csr.json /tmp/cncf_intermediate.csr /tmp/cncfintermediate.cert.pem cncfintermediate_cert.json $WORKDIR/*
+    cp -rvf /tmp/vault/cluster-keys.json ${WORKDIR}/cluster-keys.json
     echo "Temporary files removed."
 
     # Apply the wildcard certificate to the istio-system namespace in both clusters
@@ -83,9 +84,14 @@ vault_exec secrets enable -path=pki_root pki || echo "Root PKI already enabled."
 vault_exec secrets tune -max-lease-ttl=$ROOT_CA_TTL pki_root
 
 echo "Generating Root CA..."
-vault_exec write -field=certificate pki_root/root/generate/internal \
+vault_exec write -field=certificate -format=json pki_root/root/generate/internal \
     common_name="Root CA for $DOMAIN" \
-    ttl=$ROOT_CA_TTL > $WORKDIR/root-cert.pem
+    ttl=$ROOT_CA_TTL > $WORKDIR/root-cert.json
+
+jq -r '.data.certificate' $WORKDIR/root-cert.json > $WORKDIR/root-cert.pem
+
+echo "Verfiy root file...."
+openssl x509 -noout -text -in $WORKDIR/root-cert.pem
 
 vault_exec write pki_root/config/urls \
     issuing_certificates="https://vault.vault.svc.cluster.local:8200/v1/pki_root/ca" \
@@ -167,8 +173,41 @@ for NAMESPACE in "${NAMESPACES[@]}"; do
     jq -r '.data.certificate' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_ca-cert.pem
     jq -r '.data.private_key' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_ca-key.pem
     jq -r '.data.issuing_ca' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem
-    
-    echo "$(cat $WORKDIR/root-cert.pem)" >> $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem
+
+    # Ensure root-cert.pem is appended properly to cert-chain.pem
+    if [[ -s $WORKDIR/root-cert.pem ]]; then
+        cat "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" "$WORKDIR/root-cert.pem" > "$WORKDIR/${NAMESPACE}_full-cert-chain.pem"
+
+
+        echo "cat $WORKDIR/root-cert.pem: $(cat $WORKDIR/root-cert.pem)"
+        echo "cat $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem: $(cat $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem)"
+    else
+        echo "Error: root-cert.pem is missing. Cannot construct certificate chain."
+        exit 1
+    fi
+
+    # Validate cert-chain.pem
+    if [[ ! -s $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem ]]; then
+        echo "Error: Certificate chain not created for $NAMESPACE."
+        exit 1
+    else
+        echo "Certificate chain created successfully for $NAMESPACE."
+    fi
+
+    # Verify the Full Certificate Chain
+    if [[ ! -s "$WORKDIR/full-cert-chain.pem" ]]; then
+        echo "Error: Full certificate chain was not created."
+        exit 1
+    else
+        echo "Full certificate chain created successfully."
+        openssl verify -CAfile "$WORKDIR/root-cert.pem" "$WORKDIR/${NAMESPACE}_full-cert-chain.pem" > /dev/null 2>&1
+        if [[ $? -ne 0 ]]; then
+            echo "Error: The full certificate chain is invalid."
+            exit 1
+        fi
+        echo "Full certificate chain is valid."
+    fi
+
 done
 
 # Apply the wildcard certificate to the istio-system namespace in both clusters
@@ -178,20 +217,27 @@ for CTX in $CTX_CLUSTER1 $CTX_CLUSTER2; do
     kubectl create secret generic cacerts -n istio-system \
         --from-file=ca-cert.pem=$WORKDIR/istio-system_wildcard_ca-cert.pem \
         --from-file=ca-key.pem=$WORKDIR/istio-system_wildcard_ca-key.pem \
-        --from-file=cert-chain.pem=$WORKDIR/istio-system_wildcard_cert-chain.pem \
+        --from-file=cert-chain.pem=$WORKDIR/istio-system_full-cert-chain.pem \
         --from-file=root-cert.pem=$WORKDIR/root-cert.pem \
         --context=$CTX
 
     echo "Wildcard certificate applied to istio-system in $CTX."
 done
 
-# Apply TLS Secrets for Other Namespaces
+# Apply TLS Secrets for Other Namespaces with Full Cert Chain
 for CTX in $CTX_CLUSTER1 $CTX_CLUSTER2; do
     for NAMESPACE in "${NAMESPACES[@]:1}"; do
-        echo "Applying TLS secret for *.${NAMESPACE}.$DOMAIN in $CTX..."
+        echo "Applying TLS secret for *.${NAMESPACE}.${DOMAIN} in ${CTX}..."
+
+        # Combine wildcard cert-chain and root cert to create a full-cert-chain
+        cat "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" "$WORKDIR/root-cert.pem" > "$WORKDIR/${NAMESPACE}_full-cert-chain.pem"
+
+        # Create wildcard TLS secret with full cert chain
         kubectl create secret tls ${NAMESPACE}-wildcard-credential \
-            --cert=$WORKDIR/${NAMESPACE}_wildcard_ca-cert.pem \
-            --key=$WORKDIR/${NAMESPACE}_wildcard_ca-key.pem \
-            -n istio-system --context=$CTX
+            --cert="$WORKDIR/${NAMESPACE}_full-cert-chain.pem" \
+            --key="$WORKDIR/${NAMESPACE}_wildcard_ca-key.pem" \
+            -n istio-system --context=$CTX --dry-run=client -o yaml | kubectl apply -f -
+
+        echo "TLS secret for *.${NAMESPACE}.${DOMAIN} in ${CTX} applied successfully."
     done
 done
