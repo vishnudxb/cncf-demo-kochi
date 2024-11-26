@@ -6,17 +6,17 @@ Step 1:
 
 Step 2: 
 
-
-`cd istio && bash ./install.sh`
-
-Step 3: 
-
 ```
 cd ..
 
 bash ./vault_setup.sh
 
 ```
+
+Step 3: 
+
+
+`cd istio && bash ./install.sh`
 
 Step 4: 
 
