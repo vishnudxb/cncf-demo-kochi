@@ -8,14 +8,6 @@ K8S_CLUSTER_NAME="cluster.local"
 VAULT_CLUSTER_CONTEXT="kind-cluster1"
 WORKDIR=/tmp/vault
 VAULT_HELM_REPO="https://helm.releases.hashicorp.com"
-INTERMEDIATE_TTL="43800h"  # 5 years
-ROOT_TTL="87600h"          # 10 years
-TLS_CERT="vault.crt"
-TLS_KEY="vault.key"
-TLS_CA="vault.ca"
-TLS_SECRET_NAME="vault-tls"
-CRL_DIST="https://vault.vault.svc.cluster.local:8200/v1/pki/crl"
-ISSUE_URL="https://vault.vault.svc.cluster.local:8200/v1/pki/ca"
 
 # Step 1: Validate Vault Cluster Context
 echo "Vault will be deployed in cluster context: $VAULT_CLUSTER_CONTEXT"
