@@ -162,7 +162,7 @@ spec:
               - fromRegistry: cluster2
             gateways:
               - address: 172.18.0.170
-                port: 15443
+                port: 15543
       mountMtlsCerts: false
     base:
       enableCRDTemplates: false

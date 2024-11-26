@@ -84,14 +84,14 @@ vault_exec secrets tune -max-lease-ttl=87600h pki
 
 vault_exec write -field=certificate pki/root/generate/internal \
      common_name="svc.cluster.local" \
-     issuer_name="root-2023" \
-     ttl=87600h > $WORKDIR/root_2023_ca.crt
+     issuer_name="root-2024" \
+     ttl=87600h > $WORKDIR/root_2024_ca.crt
 
 vault_exec list pki/issuers/
 
 vault_exec read pki/issuer/$(vault_exec list -format=json pki/issuers/ | jq -r '.[]') | tail -n 6
 
-vault_exec write pki/roles/2023-servers allow_any_name=true
+vault_exec write pki/roles/2024-servers allow_any_name=true
 
 vault_exec write pki/config/urls \
      issuing_certificates="$VAULT_ADDR/v1/pki/ca" \
@@ -120,7 +120,7 @@ kubectl cp $WORKDIR/pki_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/pki_in
 
 
 vault_exec write -format=json pki/root/sign-intermediate \
-     issuer_ref="root-2023" \
+     issuer_ref="root-2024" \
      csr=@/tmp/pki_intermediate.csr \
      format=pem_bundle ttl="43800h"  > $WORKDIR/intermediate_cert.json
 

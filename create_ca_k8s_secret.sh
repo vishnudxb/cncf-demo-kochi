@@ -59,7 +59,6 @@ jq -r '.data.certificate' "$WORKDIR/intermediate_cert.json" > "$WORKDIR/intermed
 vault_exec read -format=json pki/cert/ca > "$WORKDIR/root_cert.json"
 jq -r '.data.certificate' "$WORKDIR/root_cert.json" > "$WORKDIR/root-cert.pem"
 
-# Fetch Private Key for the Intermediate CA
 #vault_exec read -field=private_key pki_int/keys/intermediate-ca > "$WORKDIR/ca-key.pem"
 
 cp -rvf /tmp/vault2/ca-key.pem "$WORKDIR/ca-key.pem"
