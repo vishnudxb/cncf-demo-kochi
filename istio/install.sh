@@ -28,8 +28,8 @@ kubectl get svc  -n istio-system --context "$CTX_CLUSTER2"
 
 # Step 5: deploy gateway on both clusters
 
-kubectl apply -f ./cross-network-gateway.yaml -n istio-system --context "$CTX_CLUSTER1"
-kubectl apply -f ./cross-network-gateway.yaml -n istio-system --context "$CTX_CLUSTER2"
+kubectl apply -f ./cross-network-gateway1.yaml -n istio-system --context "$CTX_CLUSTER1"
+kubectl apply -f ./cross-network-gateway2.yaml -n istio-system --context "$CTX_CLUSTER2"
 
 # Step 6: deploy peer authentications on both clusters
 
