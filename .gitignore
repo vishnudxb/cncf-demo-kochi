@@ -22,3 +22,4 @@ ca-key.pem
 intermediate.cert.pem 
 pki_intermediate.csr 
 root_2023_ca.crt
+istio-1.24.1/
