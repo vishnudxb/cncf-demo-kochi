@@ -84,11 +84,14 @@ vault_exec secrets enable -path=pki_root pki || echo "Root PKI already enabled."
 vault_exec secrets tune -max-lease-ttl=$ROOT_CA_TTL pki_root
 
 echo "Generating Root CA..."
-vault_exec write -field=certificate -format=json pki_root/root/generate/internal \
+vault_exec write -field=certificate pki_root/root/generate/internal \
     common_name="Root CA for $DOMAIN" \
-    ttl=$ROOT_CA_TTL > $WORKDIR/root-cert.json
+    ttl=$ROOT_CA_TTL
 
-jq -r '.data.certificate' $WORKDIR/root-cert.json > $WORKDIR/root-cert.pem
+vault_exec read -format=json pki_root/cert/ca | jq -r '.data.certificate' > $WORKDIR/root-cert.pem
+
+
+# jq -r '.data.certificate' $WORKDIR/root-cert.json > $WORKDIR/root-cert.pem
 
 echo "Verfiy root file...."
 openssl x509 -noout -text -in $WORKDIR/root-cert.pem
@@ -195,7 +198,7 @@ for NAMESPACE in "${NAMESPACES[@]}"; do
     fi
 
     # Verify the Full Certificate Chain
-    if [[ ! -s "$WORKDIR/full-cert-chain.pem" ]]; then
+    if [[ ! -s "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" ]]; then
         echo "Error: Full certificate chain was not created."
         exit 1
     else
