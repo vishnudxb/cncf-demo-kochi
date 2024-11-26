@@ -19,3 +19,6 @@ cncfcaroot-2024.crt
 ca-cert.pem
 root-cert.pem
 ca-key.pem
+intermediate.cert.pem 
+pki_intermediate.csr 
+root_2023_ca.crt

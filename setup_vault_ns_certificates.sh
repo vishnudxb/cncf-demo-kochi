@@ -37,6 +37,10 @@ cleanup() {
     kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
         vault secrets disable pki_intermediate || echo "Root pki_intermediate engine already removed."
 
+    echo "Deleting root PKI engine..."
+    kubectl exec -it $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- \
+        vault secrets disable pki_int || echo "Root pki_int engine already removed."
+
     # Remove temporary files
     echo "Cleaning up temporary files..."
     rm -rvf cncfcaroot-2024.crt cncf_intermediate_csr.json /tmp/cncf_intermediate.csr /tmp/cncfintermediate.cert.pem cncfintermediate_cert.json $WORKDIR/*
@@ -74,173 +78,67 @@ vault_exec() {
   kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- vault "$@"
 }
 
+vault_exec secrets enable pki
 
-# Initialize Vault PKI setup
-echo "Initializing Vault-based PKI setup inside Kubernetes..."
+vault_exec secrets tune -max-lease-ttl=87600h pki
 
-# Enable Root PKI
-echo "Enabling Root PKI in Vault..."
-vault_exec secrets enable -path=pki_root pki || echo "Root PKI already enabled."
-vault_exec secrets tune -max-lease-ttl=$ROOT_CA_TTL pki_root
+vault_exec write -field=certificate pki/root/generate/internal \
+     common_name="svc.cluster.local" \
+     issuer_name="root-2023" \
+     ttl=87600h > $WORKDIR/root_2023_ca.crt
 
-echo "Generating Root CA..."
-vault_exec write -field=certificate pki_root/root/generate/internal \
-    common_name="Root CA for $DOMAIN" \
-    ttl=$ROOT_CA_TTL
+vault_exec list pki/issuers/
 
-vault_exec read -format=json pki_root/cert/ca | jq -r '.data.certificate' > $WORKDIR/root-cert.pem
+vault_exec read pki/issuer/$(vault_exec list -format=json pki/issuers/ | jq -r '.[]') | tail -n 6
 
+vault_exec write pki/roles/2023-servers allow_any_name=true
 
-# jq -r '.data.certificate' $WORKDIR/root-cert.json > $WORKDIR/root-cert.pem
-
-echo "Verfiy root file...."
-openssl x509 -noout -text -in $WORKDIR/root-cert.pem
-
-vault_exec write pki_root/config/urls \
-    issuing_certificates="https://vault.vault.svc.cluster.local:8200/v1/pki_root/ca" \
-    crl_distribution_points="https://vault.vault.svc.cluster.local:8200/v1/pki_root/crl"
-
-echo "Root CA generated and configured."
-
-# Create Intermediate CA
-echo "Setting up Intermediate PKI..."
-vault_exec secrets enable -path=pki_intermediate pki || echo "Intermediate PKI already enabled."
-vault_exec secrets tune -max-lease-ttl=$INTERMEDIATE_CA_TTL pki_intermediate
-
-echo "Generating CSR for Intermediate CA..."
-vault_exec write -format=json pki_intermediate/intermediate/generate/internal \
-    common_name="Intermediate CA for $DOMAIN" \
-    ttl=$INTERMEDIATE_CA_TTL > $WORKDIR/intermediate_csr.json
-
-# Verify that the signed certificate is valid
-if [[ ! -s $WORKDIR/intermediate_csr.json ]]; then
-    echo "Error: Intermediate certificate signing failed. Please check Vault logs."
-    exit 1
-else 
-    echo "show the content of $WORKDIR/intermediate_csr.json.."
-    cat $WORKDIR/intermediate_csr.json
-fi
-
-jq -r '.data.csr' $WORKDIR/intermediate_csr.json > $WORKDIR/intermediate.csr
-
-echo "showing the content of $WORKDIR/intermediate.csr"
-
-echo "Signing Intermediate CA with Root CA..."
-
-# Sign Intermediate Certificate
-echo "Copy the file $WORKDIR/intermediate.csr"
-kubectl cp $WORKDIR/intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/intermediate.csr --context=$VAULT_CLUSTER_CONTEXT
-
-vault_exec write -format=json pki_root/root/sign-intermediate \
-    csr=@/tmp/intermediate.csr \
-    format=pem_bundle ttl=$INTERMEDIATE_CA_TTL > $WORKDIR/intermediate_cert.json
-
-jq -r '.data.certificate' $WORKDIR/intermediate_cert.json > $WORKDIR/intermediate_cert.pem
+vault_exec write pki/config/urls \
+     issuing_certificates="$VAULT_ADDR/v1/pki/ca" \
+     crl_distribution_points="$VAULT_ADDR/v1/pki/crl"
 
 
-if [[ ! -s $WORKDIR/intermediate_cert.pem ]]; then
-    echo "Error: Pem file not created."
-    exit 1
-else 
-    echo "show the content of $WORKDIR/intermediate_cert.pem file....."
-    cat $WORKDIR/intermediate_cert.pem
-fi
+vault_exec secrets enable -path=pki_int pki
 
-echo "Copy the file $WORKDIR/intermediate_cert.pem"
-kubectl cp  $WORKDIR/intermediate_cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/intermediate_cert.pem --context=$VAULT_CLUSTER_CONTEXT
+vault_exec secrets tune -max-lease-ttl=43800h pki_int
 
 
-echo "Run set-signed....."
-vault_exec write pki_intermediate/intermediate/set-signed certificate=@/tmp/intermediate_cert.pem
-        
-# Not use in production with allow_any_name=true \
+vault_exec write -format=json pki_int/intermediate/generate/internal \
+     common_name="svc.cluster.local Intermediate Authority" \
+     issuer_name="svc-cluster-local-intermediate" \
+     | jq -r '.data.csr' > $WORKDIR/pki_intermediate.csr
 
-echo "Configuring roles for wildcard certificates in namespaces..."
-for NAMESPACE in "${NAMESPACES[@]}"; do
-    vault_exec write pki_intermediate/roles/$NAMESPACE-wildcard \
-        allow_subdomains=true \
-        allow_any_name=true \
-        allow_wildcard_certificates=true \
-        allow_ip_sans=true \
-        allow_localhost=true \
-        max_ttl=$CERT_TTL
-done
+echo "Copy the file pki_intermediate.csr"
+kubectl cp $WORKDIR/pki_intermediate.csr $VAULT_NAMESPACE/$VAULT_POD:/tmp/pki_intermediate.csr --context=$VAULT_CLUSTER_CONTEXT
 
 
-echo "Issuing wildcard certificates for namespaces and distributing to clusters..."
-for NAMESPACE in "${NAMESPACES[@]}"; do
-    vault_exec write -format=json pki_intermediate/issue/$NAMESPACE-wildcard \
-        common_name="*.${NAMESPACE}.$DOMAIN" \
-        ttl=$CERT_TTL > $WORKDIR/${NAMESPACE}_wildcard_cert.json
-
-    jq -r '.data.certificate' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_ca-cert.pem
-    jq -r '.data.private_key' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_ca-key.pem
-    jq -r '.data.issuing_ca' $WORKDIR/${NAMESPACE}_wildcard_cert.json > $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem
-
-    # Ensure root-cert.pem is appended properly to cert-chain.pem
-    if [[ -s $WORKDIR/root-cert.pem ]]; then
-        cat "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" "$WORKDIR/root-cert.pem" > "$WORKDIR/${NAMESPACE}_full-cert-chain.pem"
+vault_exec write -format=json pki/root/sign-intermediate \
+     issuer_ref="root-2023" \
+     csr=@/tmp/pki_intermediate.csr \
+     format=pem_bundle ttl="43800h" \
+     | jq -r '.data.certificate' > $WORKDIR/intermediate.cert.pem
 
 
-        echo "cat $WORKDIR/root-cert.pem: $(cat $WORKDIR/root-cert.pem)"
-        echo "cat $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem: $(cat $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem)"
-    else
-        echo "Error: root-cert.pem is missing. Cannot construct certificate chain."
-        exit 1
-    fi
+echo "Copy the file intermediate.cert.pem"
+kubectl cp $WORKDIR/intermediate.cert.pem $VAULT_NAMESPACE/$VAULT_POD:/tmp/intermediate.cert.pem --context=$VAULT_CLUSTER_CONTEXT
 
-    # Validate cert-chain.pem
-    if [[ ! -s $WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem ]]; then
-        echo "Error: Certificate chain not created for $NAMESPACE."
-        exit 1
-    else
-        echo "Certificate chain created successfully for $NAMESPACE."
-    fi
+vault_exec write pki_int/intermediate/set-signed certificate=@/tmp/intermediate.cert.pem
 
-    # Verify the Full Certificate Chain
-    if [[ ! -s "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" ]]; then
-        echo "Error: Full certificate chain was not created."
-        exit 1
-    else
-        echo "Full certificate chain created successfully."
-        openssl verify -CAfile "$WORKDIR/root-cert.pem" "$WORKDIR/${NAMESPACE}_full-cert-chain.pem" > /dev/null 2>&1
-        if [[ $? -ne 0 ]]; then
-            echo "Error: The full certificate chain is invalid."
-            exit 1
-        fi
-        echo "Full certificate chain is valid."
-    fi
+echo "read issuers....pki_int/config/issuers"
+vault_exec read -field=default pki_int/config/issuers
 
-done
+ISSUER_REF=$(vault_exec read -field=default pki_int/config/issuers)
 
-# Apply the wildcard certificate to the istio-system namespace in both clusters
-for CTX in $CTX_CLUSTER1 $CTX_CLUSTER2; do
-    echo "Applying wildcard certificate to istio-system namespace in $CTX..."
+echo "Issuer ref is: $ISSUER_REF"
 
-    kubectl create secret generic cacerts -n istio-system \
-        --from-file=ca-cert.pem=$WORKDIR/istio-system_wildcard_ca-cert.pem \
-        --from-file=ca-key.pem=$WORKDIR/istio-system_wildcard_ca-key.pem \
-        --from-file=cert-chain.pem=$WORKDIR/istio-system_full-cert-chain.pem \
-        --from-file=root-cert.pem=$WORKDIR/root-cert.pem \
-        --context=$CTX
+vault_exec write pki_int/roles/istio-system-svc-cluster-local \
+    issuer_name="svc-cluster-local-intermediate" \
+    allow_subdomains=true \
+    allow_any_name=true \
+    allow_wildcard_certificates=true \
+    allow_ip_sans=true \
+    allow_localhost=true \
+    max_ttl="720h"
 
-    echo "Wildcard certificate applied to istio-system in $CTX."
-done
-
-# Apply TLS Secrets for Other Namespaces with Full Cert Chain
-for CTX in $CTX_CLUSTER1 $CTX_CLUSTER2; do
-    for NAMESPACE in "${NAMESPACES[@]:1}"; do
-        echo "Applying TLS secret for *.${NAMESPACE}.${DOMAIN} in ${CTX}..."
-
-        # Combine wildcard cert-chain and root cert to create a full-cert-chain
-        cat "$WORKDIR/${NAMESPACE}_wildcard_cert-chain.pem" "$WORKDIR/root-cert.pem" > "$WORKDIR/${NAMESPACE}_full-cert-chain.pem"
-
-        # Create wildcard TLS secret with full cert chain
-        kubectl create secret tls ${NAMESPACE}-wildcard-credential \
-            --cert="$WORKDIR/${NAMESPACE}_full-cert-chain.pem" \
-            --key="$WORKDIR/${NAMESPACE}_wildcard_ca-key.pem" \
-            -n istio-system --context=$CTX --dry-run=client -o yaml | kubectl apply -f -
-
-        echo "TLS secret for *.${NAMESPACE}.${DOMAIN} in ${CTX} applied successfully."
-    done
-done
+echo "Issue certificate for istio-system.svc.cluster.local"
+vault_exec write pki_int/issue/istio-system-svc-cluster-local common_name="istio-system.svc.cluster.local" ttl="24h"
