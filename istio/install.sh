@@ -6,10 +6,17 @@ yes | istioctl install --context "$CTX_CLUSTER1" -f cluster1.yaml
 
 kubectl label namespace default istio-injection=enabled --context "$CTX_CLUSTER1"
 
+kubectl --context="$CTX_CLUSTER1" get namespace istio-system
+kubectl --context="$CTX_CLUSTER1" label namespace istio-system topology.istio.io/network=network1
+
+
 # Step 3: Install Istio on Cluster 2
 echo "Installing Istio on Cluster 2 ("$CTX_CLUSTER2")..."
 yes | istioctl install --context "$CTX_CLUSTER2" -f cluster2.yaml
 kubectl label namespace default istio-injection=enabled --context "$CTX_CLUSTER2"
+
+kubectl --context="$CTX_CLUSTER2" get namespace istio-system
+kubectl --context="$CTX_CLUSTER2" label namespace istio-system topology.istio.io/network=network2
 
 # Step 4: Verify Istio Installation
 echo "Verifying Istio installation..."
