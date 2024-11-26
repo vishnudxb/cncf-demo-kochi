@@ -7,21 +7,27 @@ nodes:
   - role: control-plane
     extraPortMappings:
       - containerPort: 15021
-        hostPort: 15031
+        hostPort: 15021
         protocol: TCP
       - containerPort: 15012
-        hostPort: 15022
+        hostPort: 15012
         protocol: TCP
       - containerPort: 15443
-        hostPort: 15543
+        hostPort: 15443
         protocol: TCP
       - containerPort: 15017
-        hostPort: 15117
+        hostPort: 15017
         protocol: TCP
       - containerPort: 8080
-        hostPort: 9090
+        hostPort: 8080
         protocol: TCP
       - containerPort: 8443
-        hostPort: 9443
+        hostPort: 8443
+        protocol: TCP
+      - containerPort: 8200
+        hostPort: 8200
+        protocol: TCP
+      - containerPort: 8201 # Optional: For HA setups
+        hostPort: 8201
         protocol: TCP
   - role: worker
