@@ -50,22 +50,29 @@ vault_exec() {
   kubectl exec -it  $VAULT_POD -n $VAULT_NAMESPACE --context $VAULT_CLUSTER_CONTEXT -- vault "$@"
 }
 
-# Fetch Intermediate Certificate from Vault
+echo "Fetching certificates and keys from Vault..."
+# Fetch Intermediate Certificate
 vault_exec read -format=json pki_int/cert/ca > "$WORKDIR/intermediate_cert.json"
 jq -r '.data.certificate' "$WORKDIR/intermediate_cert.json" > "$WORKDIR/intermediate_cert.pem"
 
-# Fetch Root Certificate from Vault
+# Fetch Root Certificate
 vault_exec read -format=json pki/cert/ca > "$WORKDIR/root_cert.json"
 jq -r '.data.certificate' "$WORKDIR/root_cert.json" > "$WORKDIR/root-cert.pem"
 
 # Fetch Private Key for the Intermediate CA
-echo "Fetching private key for the intermediate CA..."
-vault_exec read -field=private_key pki_int/keys/intermediate-ca > "$WORKDIR/ca-key.pem"
+#vault_exec read -field=private_key pki_int/keys/intermediate-ca > "$WORKDIR/ca-key.pem"
 
-# Combine Intermediate and Root Certificates into a Full Chain
+cp -rvf /tmp/vault2/ca-key.pem "$WORKDIR/ca-key.pem"
+
+if [[ ! -s "$WORKDIR/ca-key.pem" ]]; then
+  echo "Error: Private key for Intermediate CA is missing."
+  exit 1
+fi
+
+# Combine Certificates
 cat "$WORKDIR/intermediate_cert.pem" "$WORKDIR/root-cert.pem" > "$WORKDIR/full-cert-chain.pem"
 
-# Validate the constructed full certificate chain
+# Validate Certificate Chain
 openssl verify -CAfile "$WORKDIR/root-cert.pem" "$WORKDIR/full-cert-chain.pem"
 if [[ $? -ne 0 ]]; then
   echo "Error: Certificate chain validation failed."
