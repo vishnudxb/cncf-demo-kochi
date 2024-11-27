@@ -71,6 +71,6 @@ kubectl get pods --context="$CTX_CLUSTER2"
 
 kubectl exec -it curl-pod --context="$CTX_CLUSTER2" -- curl http://nginx:8080
 
-kubectl create configmap nginx-config --from-file=nginx.conf=nginx.conf --context=kind-cluster1
+istioctl proxy-config cluster curl-pod -n default --context="$CTX_CLUSTER2"
 
 ```
