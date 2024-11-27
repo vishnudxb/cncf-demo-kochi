@@ -105,6 +105,7 @@ vault_exec secrets tune -max-lease-ttl=43800h pki_int
 
 vault_exec write -format=json pki_int/intermediate/generate/exported \
      common_name="svc.cluster.local Intermediate Authority" \
+     alt_names="host.docker.internal" \
      issuer_name="svc-cluster-local-intermediate" \
      ttl="43800h" \
      key_type="rsa" \
@@ -151,7 +152,11 @@ vault_exec write pki_int/roles/istio-system-svc-cluster-local \
     allow_wildcard_certificates=true \
     allow_ip_sans=true \
     allow_localhost=true \
+    alt_names="svc.cluster.local,istio-system.svc.cluster.local,default.svc.cluster.local,host.docker.internal,kubernetes.default.svc.cluster.local,kubernetes.default.svc,kubernetes.default,kubernetes,cluster2-control-plane,cluster1-control-plane,localhost"  \
     max_ttl="720h"
 
 echo "Issue certificate for istio-system.svc.cluster.local"
-vault_exec write pki_int/issue/istio-system-svc-cluster-local common_name="istio-system.svc.cluster.local" ttl="24h"
+vault_exec write pki_int/issue/istio-system-svc-cluster-local \
+    common_name="istio-system.svc.cluster.local" \
+    alt_names="svc.cluster.local,istio-system.svc.cluster.local,default.svc.cluster.local,host.docker.internal,kubernetes.default.svc.cluster.local,kubernetes.default.svc,kubernetes.default,kubernetes,cluster2-control-plane,cluster1-control-plane,localhost" \
+    ttl="24h"
