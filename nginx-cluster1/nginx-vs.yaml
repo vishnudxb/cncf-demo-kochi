@@ -1,17 +1,17 @@
 apiVersion: networking.istio.io/v1beta1
 kind: VirtualService
 metadata:
-  annotations:
   name: ngx-svc-cluster1
+  namespace: default
 spec:
-  gateways:
-  - istio-system/nginx-gw
   hosts:
-  - "*"
+  - "ngx-svc-cluster1.default.svc.cluster.local"
+  gateways:
+  - istio-system/nginx-gw-1
   http:
   - match:
     - uri:
-        prefix: /
+        prefix: "/"
     route:
     - destination:
         host: ngx-svc-cluster1.default.svc.cluster.local

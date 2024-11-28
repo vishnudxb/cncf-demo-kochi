@@ -1,19 +1,18 @@
 apiVersion: networking.istio.io/v1beta1
 kind: Gateway
 metadata:
-  annotations:
   name: nginx-gw-1
   namespace: istio-system
 spec:
   selector:
     istio: ingressgateway
   servers:
-  - hosts:
-    - '*'
-    port:
-      name: https
+  - port:
       number: 8080
+      name: https
       protocol: HTTPS
     tls:
       mode: SIMPLE
-      credentialName: default-wildcard-credential
+      credentialName: nginx-tls-secret
+    hosts:
+    - "ngx-svc-cluster1.default.svc.cluster.local"
