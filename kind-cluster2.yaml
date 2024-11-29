@@ -24,4 +24,7 @@ nodes:
       - containerPort: 8443
         hostPort: 9443
         protocol: TCP
+      - containerPort: 9000
+        hostPort: 9000
+        protocol: TCP
   - role: worker

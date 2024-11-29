@@ -69,6 +69,9 @@ spec:
             - name: https
               port: 9443
               targetPort: 8443
+            - name: api
+              port: 9000
+              targetPort: 9000
     egressGateways:
     - name: istio-egressgateway
       enabled: false

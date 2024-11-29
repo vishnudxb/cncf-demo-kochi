@@ -1,0 +1,72 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gdpr-api-configmap
+  namespace: default
+data:
+  gdpr-api.py: |
+    from flask import Flask, jsonify, request
+
+    app = Flask(__name__)
+
+    # Endpoint for non-PII data
+    @app.route('/nonpiidata', methods=['GET'])
+    def non_pii_data():
+        return jsonify({"data": "This is non-PII data from Cluster 2"})
+
+    # Endpoint for PII data
+    @app.route('/piidata', methods=['GET'])
+    def pii_data():
+        # Example: Only return sanitized PII data
+        return jsonify({"data": "Sanitized PII Data: SSN: ***-**-6789"})
+
+    if __name__ == '__main__':
+        app.run(host='0.0.0.0', port=9000)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gdpr-api
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gdpr-api
+  template:
+    metadata:
+      labels:
+        app: gdpr-api
+    spec:
+      containers:
+      - name: gdpr-api
+        image: python:3.9-slim
+        command:
+          - sh
+          - -c
+          - |
+            pip install flask && python /app/gdpr-api.py
+        ports:
+        - containerPort: 9000
+        volumeMounts:
+        - name: app-code
+          mountPath: /app
+      volumes:
+      - name: app-code
+        configMap:
+          name: gdpr-api-configmap
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gdpr-api
+  namespace: default
+spec:
+  selector:
+    app: gdpr-api
+  ports:
+  - protocol: TCP
+    port: 9000
+    targetPort: 9000

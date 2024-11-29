@@ -227,3 +227,15 @@ Welcome to Nginx cluster 1!~ $
 kubectl exec -it curl-pod  --context="$CTX_CLUSTER2" -- curl http://ngx-svc-cluster1.default.svc.cluster.local:8080
 
 ```
+
+
+```
+
+kubectl --context="$CTX_CLUSTER1" run curl-pod --image=curlimages/curl --restart=Never --command -- sleep 27600
+
+kubectl apply -f gdpr-api.yaml --context="$CTX_CLUSTER2"
+
+kubectl apply -f nginx.yaml --context="$CTX_CLUSTER1"
+
+
+```
