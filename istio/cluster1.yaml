@@ -219,7 +219,7 @@ spec:
           - 10.225.0.0/16
           - 172.18.0.0/16
           - 172.16.0.0/16
-          - 0.0.0.0/0
+          - 0.0.0.0/0 # Not for production use
         name: istio-ingressgateway
         env: {}
         secretVolumes:

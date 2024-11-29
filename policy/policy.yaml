@@ -1,0 +1,40 @@
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-nonpiidata
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: gdpr-api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            ipBlocks: ["10.115.0.0/16", "10.110.0.0/16", "10.220.0.0/16", "10.225.0.0/16"]
+            namespaces: ["default"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/nonpiidata*"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-piidata
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: gdpr-api
+  action: DENY
+  rules:
+    - from:
+        - source:
+            ipBlocks: ["10.115.0.0/16", "10.110.0.0/16", "10.220.0.0/16", "10.225.0.0/16"]
+            namespaces: ["default"]
+      to:
+        - operation:
+            methods: ["GET"]
+            paths: ["/piidata*"]
+            ports: ["9000"]

@@ -32,6 +32,14 @@ Step 4:
 cd istio
 bash ./install.sh
 
+kubectl get secret istio-ca-secret -n istio-system --context="$CTX_CLUSTER1" -o jsonpath='{.data.root-cert\.pem}' | md5sum
+
+kubectl get secret istio-ca-secret -n istio-system --context="$CTX_CLUSTER2" -o jsonpath='{.data.root-cert\.pem}' | md5sum
+
+kubectl get secret cacerts -n istio-system --context="$CTX_CLUSTER1" -o jsonpath='{.data.root-cert\.pem}' | md5sum
+
+kubectl get secret cacerts -n istio-system --context="$CTX_CLUSTER2" -o jsonpath='{.data.root-cert\.pem}' | md5sum
+
 ```
 
 
@@ -163,11 +171,8 @@ Welcome to Nginx cluster 1!%
 
 ```
 
-➜  cncf-demo-kochi git:(master) ✗
-➜  cncf-demo-kochi git:(master) ✗ kubectl exec -it curl-pod --context="$CTX_CLUSTER2" -- /bin/sh
-~ $
-~ $ curl -v --resolve ngx-svc-cluster1.default.svc.cluster.local:8080:172.18.0.150 \
->     --cacert /tmp/full_ca_chain.pem https://ngx-svc-cluster1.default.svc.cluster.local:8080
+kubectl exec -it curl-pod --context="$CTX_CLUSTER2" --  curl -v --resolve ngx-svc-cluster1.default.svc.cluster.local:8080:172.18.0.150 --cacert /tmp/full_ca_chain.pem https://ngx-svc-cluster1.default.svc.cluster.local:8080
+
 * Added ngx-svc-cluster1.default.svc.cluster.local:8080:172.18.0.150 to DNS cache
 * Hostname ngx-svc-cluster1.default.svc.cluster.local was found in DNS cache
 *   Trying 172.18.0.150:8080...
@@ -231,11 +236,14 @@ kubectl exec -it curl-pod  --context="$CTX_CLUSTER2" -- curl http://ngx-svc-clus
 
 ```
 
-kubectl --context="$CTX_CLUSTER1" run curl-pod --image=curlimages/curl --restart=Never --command -- sleep 27600
+kubectl --context="$CTX_CLUSTER2" run curl-pod --image=curlimages/curl --restart=Never --command -- sleep 27600
 
-kubectl apply -f gdpr-api.yaml --context="$CTX_CLUSTER2"
+kubectl apply -f gdpr-api.yaml --context="$CTX_CLUSTER1"
 
-kubectl apply -f nginx.yaml --context="$CTX_CLUSTER1"
+kubectl exec -it curl-pod --context="$CTX_CLUSTER2" -- curl http://gdpr-api.default.svc.cluster.local:9000/piidata
 
+kubectl exec -it curl-pod --context="$CTX_CLUSTER2" -- curl http://gdpr-api.default.svc.cluster.local:9000/nonpiidata
+
+kubectl apply -f policy.yaml --context="$CTX_CLUSTER1"
 
 ```

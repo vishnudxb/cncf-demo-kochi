@@ -106,4 +106,10 @@ kubectl create secret generic cacerts -n istio-system --context="$CTX_CLUSTER2" 
     --from-file=cert-chain.pem="$WORKDIR/full-cert-chain.pem" \
     --from-file=root-cert.pem="$WORKDIR/root-cert.pem"
 
+kubectl delete secret istio-ca-secret  --context="$CTX_CLUSTER1" -n istio-system --ignore-not-found  
+kubectl delete secret istio-ca-secret  --context="$CTX_CLUSTER2" -n istio-system --ignore-not-found
+
+kubectl rollout restart deploy --context="$CTX_CLUSTER1" -n istio-system
+kubectl rollout restart deploy --context="$CTX_CLUSTER2" -n istio-system
+
 echo "cacerts secret has been successfully applied to all clusters."

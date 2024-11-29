@@ -23,7 +23,7 @@ data:
     def init_db():
         conn = get_db_connection()
         conn.execute('CREATE TABLE IF NOT EXISTS data (id INTEGER PRIMARY KEY, type TEXT, content TEXT)')
-        conn.execute('INSERT INTO data (type, content) VALUES ("nonpii", "This is non-PII data from Cluster 2")')
+        conn.execute('INSERT INTO data (type, content) VALUES ("nonpii", "This is non-PII data from Cluster 1")')
         conn.execute('INSERT INTO data (type, content) VALUES ("pii", "Sanitized PII Data: SSN: ***-**-6789")')
         conn.commit()
         conn.close()

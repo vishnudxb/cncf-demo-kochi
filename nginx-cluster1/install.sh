@@ -128,6 +128,9 @@ kubectl apply -f nginx-gw.yaml  --context=$CTX_CLUSTER1
 # Apply Istio VirtualService
 kubectl apply -f nginx-vs.yaml  --context=$CTX_CLUSTER1
 
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER1" 
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER2"
+
 echo "TLS setup for nginx completed!"
 
 echo "Create a test pod in cluster2...."
