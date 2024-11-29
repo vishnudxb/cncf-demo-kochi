@@ -7,22 +7,71 @@ metadata:
 data:
   gdpr-api.py: |
     from flask import Flask, jsonify, request
+    import sqlite3
 
     app = Flask(__name__)
+
+    # Initialize SQLite database (for demo purposes)
+    DATABASE = '/db/data.db'
+
+    def get_db_connection():
+        conn = sqlite3.connect(DATABASE)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    # Initialize database and populate data (this runs when the app starts)
+    def init_db():
+        conn = get_db_connection()
+        conn.execute('CREATE TABLE IF NOT EXISTS data (id INTEGER PRIMARY KEY, type TEXT, content TEXT)')
+        conn.execute('INSERT INTO data (type, content) VALUES ("nonpii", "This is non-PII data from Cluster 2")')
+        conn.execute('INSERT INTO data (type, content) VALUES ("pii", "Sanitized PII Data: SSN: ***-**-6789")')
+        conn.commit()
+        conn.close()
 
     # Endpoint for non-PII data
     @app.route('/nonpiidata', methods=['GET'])
     def non_pii_data():
-        return jsonify({"data": "This is non-PII data from Cluster 2"})
+        conn = get_db_connection()
+        data = conn.execute('SELECT content FROM data WHERE type = "nonpii"').fetchone()
+        conn.close()
+        return jsonify({"data": data["content"]})
 
     # Endpoint for PII data
     @app.route('/piidata', methods=['GET'])
     def pii_data():
-        # Example: Only return sanitized PII data
-        return jsonify({"data": "Sanitized PII Data: SSN: ***-**-6789"})
+        conn = get_db_connection()
+        data = conn.execute('SELECT content FROM data WHERE type = "pii"').fetchone()
+        conn.close()
+        return jsonify({"data": data["content"]})
 
     if __name__ == '__main__':
+        init_db()
         app.run(host='0.0.0.0', port=9000)
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: gdpr-api-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"  # Adjust this path as needed
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gdpr-api-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -52,10 +101,15 @@ spec:
         volumeMounts:
         - name: app-code
           mountPath: /app
+        - name: db-storage
+          mountPath: /db          
       volumes:
       - name: app-code
         configMap:
           name: gdpr-api-configmap
+      - name: db-storage
+        persistentVolumeClaim:
+          claimName: gdpr-api-pvc
 
 ---
 apiVersion: v1
