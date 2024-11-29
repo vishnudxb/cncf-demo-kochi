@@ -152,4 +152,3 @@ echo "Example command for HTTPS:"
 echo "kubectl exec -it curl-pod --context=\"$CTX_CLUSTER2\" -- curl --cacert /tmp/full_ca_chain.pem https://<service-name>:<port>"
 echo "Example command for mTLS:"
 echo "kubectl exec -it curl-pod --context=\"$CTX_CLUSTER2\" -- curl --cert /tmp/tls.crt --key /tmp/tls.key --cacert /tmp/full_ca_chain.pem https://<service-name>:<port>"
-

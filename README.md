@@ -2,7 +2,11 @@
 
 Step 1:
 
-`bash ./install.sh`
+```
+
+bash ./install.sh
+
+```
 
 Step 2: 
 
@@ -25,7 +29,8 @@ Step 4:
 
 ```
 
-cd istio && bash ./install.sh
+cd istio
+bash ./install.sh
 
 ```
 
@@ -52,6 +57,11 @@ istioctl create-remote-secret \
     --server=https://cluster2-control-plane:6443 | \
     kubectl apply -f - --context="$CTX_CLUSTER1"
 
+
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER1"
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER2"
+
+
 ```
 
 
@@ -65,6 +75,10 @@ kubectl --context="$CTX_CLUSTER1" run curl-pod --image=curlimages/curl --restart
 
 kubectl exec -it curl-pod --context="$CTX_CLUSTER1" -- curl http://nginx:8080
 
+kubectl delete pod curl-pod --context="$CTX_CLUSTER1" --force
+
+kubectl get pods --context="$CTX_CLUSTER1"
+
 kubectl --context="$CTX_CLUSTER2" run curl-pod --image=curlimages/curl --restart=Never --command -- sleep 27600
 
 kubectl get pods --context="$CTX_CLUSTER2"
@@ -76,9 +90,26 @@ istioctl proxy-config cluster curl-pod -n default --context="$CTX_CLUSTER2"
 ```
 
 
+```
+
+cd nginx-cluster1
+bash ./install.sh
+
+
+openssl x509 -noout -modulus -in /tmp/vault4/tls.crt | openssl md5
+openssl rsa -noout -modulus -in /tmp/vault4/tls.key | openssl md5
+openssl verify -CAfile /tmp/vault4/full_ca_chain.pem /tmp/vault4/tls.crt
+
+
+```
+
+
 From outside:
 
 ```
+
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER1"
+kubectl rollout restart deploy -n istio-system --context="$CTX_CLUSTER2"
 
 ➜  cncf-demo-kochi git:(master) ✗ curl -v --resolve ngx-svc-cluster1.default.svc.cluster.local:8080:172.18.0.150 --cacert /tmp/vault4/full_ca_chain.pem https://ngx-svc-cluster1.default.svc.cluster.local:8080
 * Added ngx-svc-cluster1.default.svc.cluster.local:8080:172.18.0.150 to DNS cache
@@ -188,5 +219,11 @@ Welcome to Nginx cluster 1!%
 <
 * Connection #0 to host ngx-svc-cluster1.default.svc.cluster.local left intact
 Welcome to Nginx cluster 1!~ $
+
+```
+
+```
+
+kubectl exec -it curl-pod  --context="$CTX_CLUSTER2" -- curl http://ngx-svc-cluster1.default.svc.cluster.local:8080
 
 ```
